@@ -255,5 +255,59 @@ let cancelled = false;
 try { await p3; } catch (e) { cancelled = e.name === "AbortError"; }
 ok("cancelling the tool call clears the question", cancelled && store.state.elicitation === null);
 
+
+
+console.log("\n== filing fee ==");
+n = await names();
+ok("fee tool registered once a category exists", n.includes("check-filing-fee"));
+r = await call("check-filing-fee", {});
+ok("fee determined for the chosen category", r.structuredContent.determined === true);
+ok("fee result always carries its caveat", /verify against the current/.test(r.content[0].text));
+r = await call("check-filing-fee", { householdSize: 1, annualHouseholdIncome: 19000 });
+ok("waiver qualifies on low income", r.structuredContent.waiver.qualifiesByIncome === true);
+r = await call("check-filing-fee", { householdSize: 1, annualHouseholdIncome: 90000 });
+ok("waiver does not qualify on high income", r.structuredContent.waiver.qualifiesByIncome === false);
+r = await call("check-filing-fee", { filingOnline: false });
+ok("paper filing costs more than online", r.structuredContent.baseFee === 470);
+
+console.log("\n== rejection risk composes everything ==");
+n = await names();
+ok("risk tool registered", n.includes("assess-rejection-risk"));
+r = await call("assess-rejection-risk", {});
+const codes = r.structuredContent.findings.map(f => f.code);
+ok("returns a verdict", ["ready", "risky", "not-ready"].includes(r.structuredContent.verdict), r.structuredContent.verdict);
+ok("counts findings by severity", typeof r.structuredContent.counts.blocking === "number");
+ok("notices the fee", codes.includes("FEE_DUE") || codes.includes("FEE_UNKNOWN"), codes.join(","));
+ok("findings are ranked worst first", (() => {
+  const rank = { blocking: 0, high: 1, medium: 2, low: 3 };
+  const seq = r.structuredContent.findings.map(f => rank[f.severity]);
+  return seq.every((x, i) => i === 0 || seq[i - 1] <= x);
+})());
+
+// an unsigned form must be flagged, and signing must clear it
+store.setCertified(false);
+await syncTools();
+r = await call("assess-rejection-risk", {});
+ok("unsigned form is flagged", r.structuredContent.findings.some(f => f.code === "UNSIGNED"));
+store.setCertified(true);
+await syncTools();
+r = await call("assess-rejection-risk", {});
+ok("signing clears the flag", !r.structuredContent.findings.some(f => f.code === "UNSIGNED"));
+
+// a name duplicated as a former name is caught, which no field validator sees
+store.state.otherNames.push({ familyName: "Sok", givenName: "Dara" });
+await syncTools();
+r = await call("assess-rejection-risk", {});
+ok("catches a former name identical to the legal name",
+  r.structuredContent.findings.some(f => f.code === "NAME_DUPLICATE"));
+store.state.otherNames.pop();
+
+console.log("\n== explain-field defers language to the agent ==");
+await call("set-contact-details", { preferredLanguage: "Khmer" });
+await acceptAll();
+r = await call("explain-field", { field: "aNumber" });
+ok("reports the declared language", r.structuredContent.preferredLanguage === "Khmer");
+ok("tells the agent to answer in it", /relay this explanation in Khmer/i.test(r.content[0].text));
+
 console.log(`\nfinal: ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -1,6 +1,8 @@
 import { SECTIONS, SECTION_BY_ID, fieldsFor, descriptionFor } from "./form-definition.js";
 import { ELIGIBILITY_CATEGORIES, getCategory, searchCategories, CATEGORY_CODES } from "./reference-data.js";
 import { filingWindow } from "./filing-window.js";
+import { feeAssessment } from "./fees.js";
+import { assessRisk } from "./risk.js";
 import * as store from "./store.js";
 import { registerTool, onToolChange, init as initAdapter, getMode } from "./webmcp-adapter.js";
 
@@ -294,7 +296,18 @@ function explainTool() {
       if (f.type === "date") lines.push("Format: MM/DD/YYYY.");
       if (f.validate) lines.push(`This field is format-checked by the page, so a malformed value will be returned to you with the exact rule it broke.`);
       lines.push(f.required ? "This field is required." : "This field is optional and is safe to leave blank.");
+
+      // The page is the authority on what a field means. The agent is the thing
+      // that speaks languages. Rather than shipping a second, worse translation
+      // layer here, the guidance is returned in English with the applicant's
+      // declared preference attached, so the agent renders it in their language.
+      const lang = store.values().preferredLanguage;
+      if (lang && lang !== "English") {
+        lines.push(`The applicant asked for notices in ${lang}. Relay this explanation in ${lang} rather than in English.`);
+      }
+
       return result(lines.join("\n"), {
+        preferredLanguage: lang || null,
         found: true, field: f.name, label: f.label, section: section.id,
         required: Boolean(f.required), type: f.type, options: f.options || null,
         guidance: f.help || f.description
@@ -400,26 +413,7 @@ function precheckTool() {
       const status = store.formStatus();
       const cat = getCategory(v.eligibilityCategory);
 
-      const docs = [
-        "A copy of the photo page of your passport",
-        "Two identical passport-style photographs",
-        "A copy of your most recent I-94 arrival record"
-      ];
-      if (cat?.code.startsWith("(c)(3)")) {
-        docs.push("A copy of your Form I-20 with the OPT recommendation on page 2");
-        docs.push("A copy of any previously issued Employment Authorization Document");
-      }
-      if (cat?.code === "(c)(3)(C)") {
-        docs.push("A copy of your STEM degree certificate or diploma");
-        docs.push("Your employer's completed training plan, Form I-983");
-      }
-      if (cat?.code === "(c)(9)") docs.push("A copy of your I-485 receipt notice");
-      if (cat?.code === "(c)(8)") docs.push("A copy of your asylum application receipt notice");
-      if (cat?.code === "(c)(26)") docs.push("A copy of your spouse's I-140 approval notice and current H-1B approval");
-      if (cat?.code === "(a)(12)") docs.push("A copy of your Temporary Protected Status approval notice");
-      if (v.reasonForApplying !== "Initial permission to accept employment") {
-        docs.push("A copy of the front and back of the card being renewed or replaced");
-      }
+      const docs = documentChecklistFor(v);
 
       const text = [
         status.blockingIssues.length
@@ -434,6 +428,39 @@ function precheckTool() {
     }
   };
 }
+
+// One source for the checklist, so the precheck and the risk assessment can
+// never disagree about what this applicant needs.
+export function documentChecklistFor(v) {
+  const code = v.eligibilityCategory;
+  const docs = [
+    "A copy of the photo page of your passport",
+    "Two identical passport-style photographs",
+    "A copy of your most recent I-94 arrival record"
+  ];
+  if (code?.startsWith("(c)(3)")) {
+    docs.push("A copy of your Form I-20 with the OPT recommendation on page 2");
+    docs.push("A copy of any previously issued Employment Authorization Document");
+  }
+  if (code === "(c)(3)(C)") {
+    docs.push("A copy of your STEM degree certificate or diploma");
+    docs.push("Your employer's completed training plan, Form I-983");
+  }
+  if (code === "(c)(9)") docs.push("A copy of your I-485 receipt notice");
+  if (code === "(c)(8)") docs.push("A copy of your asylum application receipt notice");
+  if (code === "(c)(26)") docs.push("A copy of your spouse's I-140 approval notice and current H-1B approval");
+  if (code === "(a)(12)") docs.push("A copy of your Temporary Protected Status approval notice");
+  if (v.reasonForApplying && v.reasonForApplying !== "Initial permission to accept employment") {
+    docs.push("A copy of the front and back of the card being renewed or replaced");
+  }
+  return docs;
+}
+
+// Injected rather than imported, because federation lives in the page and the
+// tool layer must stay usable in tests where no iframe exists.
+let federationAccess = null;
+export function setFederationAccess(access) { federationAccess = access; }
+function getFederation() { return federationAccess; }
 
 function packetTool() {
   return {
@@ -483,6 +510,96 @@ function packetTool() {
         otherNames: store.state.otherNames,
         generatedAt: new Date().toISOString()
       });
+    }
+  };
+}
+
+function feeTool() {
+  return {
+    name: "check-filing-fee",
+    title: "Check the filing fee",
+    annotations: { readOnlyHint: true },
+    description:
+      "Work out what this applicant owes and whether a fee waiver is worth requesting. Some categories are fee-exempt for an initial request but not for a renewal, one requires a biometrics fee on top, and one cannot be waived at any income. Sending the wrong amount has a filing returned unprocessed. Figures are a snapshot and the result says so.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        householdSize: {
+          type: "integer",
+          minimum: 1,
+          maximum: 20,
+          description: "Optional. People in the applicant's household, for the fee-waiver income test."
+        },
+        annualHouseholdIncome: {
+          type: "integer",
+          minimum: 0,
+          description: "Optional. Total annual household income in US dollars, for the waiver income test."
+        },
+        filingOnline: {
+          type: "boolean",
+          description: "Whether the applicant will file online rather than on paper. Defaults to online, which is cheaper."
+        }
+      },
+      additionalProperties: false
+    },
+    execute(args = {}) {
+      const fee = feeAssessment(store.values(), args);
+      const lines = [fee.determined ? fee.summary : fee.reason];
+      if (fee.waiverNote) lines.push(fee.waiverNote);
+      lines.push(`These are ${fee.caveat}.`);
+      return result(lines.join("\n"), fee);
+    }
+  };
+}
+
+// The composing tool. Answering "can this person file today" needs the form's
+// validation state, a window computed from a date on their I-20, a fee that
+// depends on their category, and document expiry held on another origin. All
+// four are reachable from here and none of them are reachable from a server.
+function riskTool() {
+  return {
+    name: "assess-rejection-risk",
+    title: "Assess rejection risk",
+    annotations: { readOnlyHint: true, untrustedContentHint: true },
+    description:
+      "Check everything at once for the reasons filings actually get returned, and rank what you find. Combines this form's validation state, the filing window, the fee determination, name consistency, and document expiry checked against the applicant's vault on its own origin. Run it before telling anyone they are ready to file.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async execute(_args, options = {}) {
+      const values = store.values();
+      const status = store.formStatus();
+      const window = filingWindow(values);
+      const fee = feeAssessment(values, {});
+
+      // Reach across the origin boundary only when a vault is actually
+      // connected, and never let a slow or missing vault fail the whole answer.
+      let checkDocument = null;
+      let checklist = [];
+      const fed = getFederation();
+      if (fed?.available()) {
+        checklist = documentChecklistFor(values);
+        checkDocument = req => fed.call("vault-check-requirement", { requirement: req });
+      }
+
+      if (options.signal?.aborted) {
+        throw new DOMException("Assessment cancelled.", "AbortError");
+      }
+
+      const assessment = await assessRisk({
+        status, window, fee, values,
+        otherNames: store.state.otherNames,
+        checkDocument, checklist
+      });
+
+      // Output budget is 1.5K, and a long list of low-severity notes would push
+      // past it while burying the things that matter.
+      const shown = assessment.findings.filter(f => f.severity === "blocking" || f.severity === "high").slice(0, 6);
+      const rest = assessment.findings.length - shown.length;
+
+      const lines = [assessment.headline];
+      for (const f of shown) lines.push(`  [${f.severity}] ${f.title}${f.detail ? ` — ${f.detail}` : ""}`.replace(" — ", ". "));
+      if (rest > 0) lines.push(`  Plus ${rest} lower-severity note${rest === 1 ? "" : "s"} in this result's structuredContent.`);
+
+      return result(lines.join("\n"), assessment);
     }
   };
 }
@@ -680,7 +797,11 @@ function desiredTools() {
 
   const status = store.formStatus();
   if (store.state.history.length) tools.push(undoTool());
-  if (store.values().eligibilityCategory) tools.push(filingWindowTool());
+  if (store.values().eligibilityCategory) {
+    tools.push(filingWindowTool());
+    tools.push(feeTool());
+  }
+  if (status.sectionsComplete >= 2) tools.push(riskTool());
   if (status.sectionsComplete >= 3) tools.push(precheckTool());
   // Offered only once the form is otherwise finished and unsigned, so it cannot
   // be used to skip past the work.

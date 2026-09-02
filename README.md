@@ -20,7 +20,7 @@ Ombuds is the other approach. The page owns the rules, so the page is the one th
 
 ## What makes this a WebMCP app rather than a form with tools bolted on
 
-Eight things. The first five are impossible or pointless over a backend integration. The sixth uses both halves of the spec, the seventh sends tools across an origin boundary, and the eighth is a working answer to a question the standard has not settled yet.
+Eight things. The first five are impossible or pointless over a backend integration. The sixth uses both halves of the spec, the seventh sends tools across an origin boundary, the eighth is a working answer to a question the standard has not settled yet, and one composing tool needs all of them at once.
 
 ### 1. The schemas are generated from live state, not written by hand
 
@@ -147,6 +147,44 @@ This replaces the earlier design where the certification simply had no tool. Ref
 
 The tool is registered only while the form is otherwise complete and unsigned, and it refuses outright if the review queue is non-empty, because nobody should be asked to sign a form with unreviewed values in it.
 
+## The composing tool
+
+`assess-rejection-risk` is the argument for this whole standard in one function. Answering "can this person file today" requires four things at once:
+
+- the form's own validation state, which lives in this page
+- a filing window computed from a date on their I-20, which lives in this page
+- a fee determination that depends on their eligibility category, which lives in this page
+- the expiry status of their supporting documents, which lives on **another origin**
+
+All four are reachable from the browser. None are reachable from a server, which would have to be handed every input and trust that each arrived intact. Live output against a STEM applicant whose documents are out of date:
+
+```
+Not ready to file. 1 issue would have this returned.
+  [blocking] Out of date: Form I-20 with OPT recommendation. Replace it first.
+  [high]     Missing: A copy of any previously issued Employment Authorization Document.
+  [high]     Missing: Your employer's completed training plan, Form I-983.
+  [high]     The applicant has not signed the certification.
+  ... plus DOC_EXPIRING and FEE_DUE in structuredContent
+```
+
+Findings are ranked worst first and the text carries only blocking and high severities, because a long tail of low-severity notes would push past the 1.5K output budget while burying the things that matter. Everything is in `structuredContent`.
+
+It also catches things no field validator can see. A former name identical to the current legal name is valid in every individual field and is a routine reason a filing comes back.
+
+## Fees and waivers
+
+`check-filing-fee` works out what is owed. Some categories are fee-exempt for an initial request but not for a renewal. One requires a biometrics fee on top. One cannot be waived at any income. Given a household size and income it runs the waiver income test against a poverty guideline.
+
+Every fee answer says, in the same breath, that the figures are a snapshot to verify against the current official schedule. A prep tool that states a stale number with confidence is worse than one that admits it is a starting point, and fee schedules change mid-year.
+
+## Language belongs to the agent, not the page
+
+The form collects a preferred language, and the obvious move would be to ship translations of every field's guidance. I deliberately did not.
+
+The page is the authority on what a field means. The agent is the thing that speaks languages. Shipping a second, worse translation layer inside the page would duplicate a capability the agent already has and do it badly. So `explain-field` returns its guidance in English with the applicant's declared preference attached, and tells the agent to relay it in that language.
+
+That division holds generally. Put the facts the agent cannot know in the page. Leave the things the model is good at to the model.
+
 ## Filing windows
 
 `check-filing-window` computes whether this applicant can file today. Post-completion OPT opens 90 days before the program end date and closes 60 days after it. A STEM extension must be filed before the current card lapses. Filing outside the window is a rejection the applicant learns about by mail weeks later.
@@ -219,7 +257,7 @@ node serve.js vault 4174
 npm test
 ```
 
-`npm test` runs three suites. `test/run.js` walks the agent's whole path through the adapter's `getTools()` and `executeTool()`, covering 68 assertions: progressive registration, per-category schema generation, self-correction from structured errors, the approval gate, enum enforcement, cross-field conflict detection, sensitive-field refusal, cancellation, filing-window arithmetic, undo across a revision history, and the elicitation contract, including that a suspended call stays suspended, that a decline is never read as approval, and that cancelling clears the question.
+`npm test` runs three suites. `test/run.js` walks the agent's whole path through the adapter's `getTools()` and `executeTool()`, covering 84 assertions: progressive registration, per-category schema generation, self-correction from structured errors, the approval gate, enum enforcement, cross-field conflict detection, sensitive-field refusal, cancellation, filing-window arithmetic, undo across a revision history, and the elicitation contract, including that a suspended call stays suspended, that a decline is never read as approval, and that cancelling clears the question.
 
 ## How it is put together
 
@@ -234,6 +272,8 @@ npm test
 | [`src/declarative.js`](src/declarative.js) | The declarative form tool's search and its `respondWith()` response |
 | [`src/persistence.js`](src/persistence.js) | Opt-in local draft storage, and the rules about what never persists |
 | [`src/filing-window.js`](src/filing-window.js) | Per-category filing windows computed from the applicant's own dates |
+| [`src/fees.js`](src/fees.js) | Fee determination and the waiver income test, with its caveat attached |
+| [`src/risk.js`](src/risk.js) | The composing assessment, ranked, reaching across the origin boundary |
 | [`src/federation.js`](src/federation.js) | Cross-origin discovery via `fromOrigins`, with the bridge fallback |
 | [`vault/vault.js`](vault/vault.js) | The second origin's tools, registered with `exposedTo` |
 | [`test/budget.js`](test/budget.js) | Fails if any tool exceeds the documented metadata budgets |

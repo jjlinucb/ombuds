@@ -1,15 +1,19 @@
-import { initTools, onToolsSynced } from "./tools.js";
+import { initTools, onToolsSynced, setFederationAccess } from "./tools.js";
 import { getTools, executeTool } from "./webmcp-adapter.js";
 import { initUI, renderAll, announceRestore } from "./ui.js";
 import { initDeclarative } from "./declarative.js";
 import { initPersistence } from "./persistence.js";
-import { initFederation } from "./federation.js";
+import { initFederation, federationState, callVaultTool } from "./federation.js";
 
 const mode = await initTools();
 const restoredAt = initPersistence();
 initDeclarative();
 initUI();
 announceRestore(restoredAt);
+setFederationAccess({
+  available: () => federationState().transport !== "none",
+  call: callVaultTool
+});
 initFederation();
 
 // The tool set changing is its own signal, separate from the form's state
