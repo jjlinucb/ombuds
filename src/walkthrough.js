@@ -35,13 +35,13 @@ const scrollTo = id => document.getElementById(id)?.scrollIntoView({ behavior: "
 export const STEPS = [
   {
     caption: "Five tools registered. Only Part 1 is open, so that is all an agent can reach.",
-    holdSeconds: 16,
+    holdSeconds: 14,
     watch: "tool-surface",
     async run() { scrollTo("section-reason"); }
   },
   {
     caption: "The agent answers Part 1. Watch two new tools appear in the sidebar.",
-    holdSeconds: 13,
+    holdSeconds: 12,
     watch: "tool-surface",
     async run() {
       await call("set-reason-for-applying", { reasonForApplying: "Initial permission to accept employment" });
@@ -51,7 +51,7 @@ export const STEPS = [
   },
   {
     caption: "It fills the name and birth section. More sections unlock, so more tools register.",
-    holdSeconds: 9,
+    holdSeconds: 10,
     watch: "tool-surface",
     async run() {
       await call("set-personal-info", {
@@ -77,7 +77,7 @@ export const STEPS = [
   },
   {
     caption: "Same tool, same name. Switch to STEM OPT and its schema becomes four different fields.",
-    holdSeconds: 16,
+    holdSeconds: 18,
     watch: "schema",
     async run() {
       await call("set-eligibility-category", { eligibilityCategory: "(c)(3)(C)" });
@@ -89,7 +89,7 @@ export const STEPS = [
   },
   {
     caption: "The agent sends a malformed SEVIS number. The page rejects it with the rule and an example.",
-    holdSeconds: 16,
+    holdSeconds: 15,
     watch: "log",
     async run() {
       await call("answer-category-questions", { sevisNumber: "12345" });
@@ -98,7 +98,7 @@ export const STEPS = [
   },
   {
     caption: "It reads that and fixes its own argument. Nobody retyped anything.",
-    holdSeconds: 6,
+    holdSeconds: 8,
     watch: "log",
     async run() {
       await call("answer-category-questions", {
@@ -111,7 +111,7 @@ export const STEPS = [
   },
   {
     caption: "Its answers are proposals, sitting in the review queue until a person accepts them.",
-    holdSeconds: 10,
+    holdSeconds: 8,
     watch: "queue",
     async run() { await pause(900); }
   },
@@ -138,7 +138,7 @@ export const STEPS = [
   },
   {
     caption: "One question, four sources: this form, a filing window, a fee, and documents on another origin.",
-    holdSeconds: 12,
+    holdSeconds: 15,
     watch: "log",
     async run() {
       await call("assess-rejection-risk", {});
@@ -147,7 +147,7 @@ export const STEPS = [
   },
   {
     caption: "That expired I-20 came from a vault on a different origin, which publishes tools only to this page.",
-    holdSeconds: 18,
+    holdSeconds: 17,
     watch: "vault",
     async run() {
       scrollTo("vault-card");
@@ -156,7 +156,7 @@ export const STEPS = [
   },
   {
     caption: "Now it asks for a signature. Its tool call is suspended right now, waiting on a person.",
-    holdSeconds: 13,
+    holdSeconds: 12,
     watch: "ask",
     async run() {
       // Deliberately not awaited. The point of the step is that the call hangs.
@@ -168,7 +168,7 @@ export const STEPS = [
   },
   {
     caption: "It can ask. It cannot sign. Only this click resolves that call.",
-    holdSeconds: 23,
+    holdSeconds: 21,
     watch: "ask",
     async run() { await pause(400); },
     waitsForHuman: true
