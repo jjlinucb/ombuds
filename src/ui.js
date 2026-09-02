@@ -813,7 +813,7 @@ function refreshBadge() {
     badge.title = `The browser exposes document.modelContext but refused to register tools (${getNativeError()?.name || "error"}). This usually means the "tools" permissions policy is disabled. The page has fallen back to its own registry so the interface still works.`;
   } else {
     badge.classList.remove("live");
-    badge.textContent = "WebMCP not detected";
+    badge.textContent = "WebMCP shim active";
     badge.title = "document.modelContext is unavailable, so the page is serving its own tool registry. Enable chrome://flags/#enable-webmcp-testing, or use the Try a tool panel, which exercises the identical code path.";
   }
 }
