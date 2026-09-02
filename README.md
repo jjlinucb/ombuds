@@ -4,7 +4,8 @@
 
 Built for the [OpenAI WebMCP Challenge](https://webmcp.devpost.com). MIT licensed. No build step, no dependencies, no backend.
 
-Live demo: `<paste your deployed URL here>`
+Live demo: **https://ombuds-mu.vercel.app**
+Repository: **https://github.com/jjlinucb/ombuds**
 
 ---
 
