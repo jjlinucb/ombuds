@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombuds — work authorization worksheet</title>
+<meta name="description" content="A WebMCP-native form. The page teaches the agent what to ask, constrains what it can send, corrects it when it is wrong, and hands every answer to a human before it counts.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">◫</span>
+    <div>
+      <strong>Ombuds</strong>
+      <span class="brand-sub">Work authorization worksheet</span>
+    </div>
+  </div>
+
+  <div class="progress-rail" id="progress-rail" aria-label="Form progress"></div>
+
+  <div class="topbar-right">
+    <span class="badge" id="mode-badge" title="WebMCP availability">checking</span>
+    <button class="btn btn-ghost" id="btn-demo" title="Fill the form with a sample applicant so you can explore the later sections">Load sample</button>
+    <button class="btn btn-ghost" id="btn-reset">Reset</button>
+  </div>
+</header>
+
+<div class="notice">
+  <strong>Independent worksheet.</strong>
+  Ombuds is not affiliated with, endorsed by, or connected to USCIS or any government agency, and it does not file
+  anything on your behalf. It helps you assemble and check your answers, then hands you a summary to review against
+  your own documents. Everything stays in this browser tab and is never sent to a server.
+</div>
+
+<main class="layout">
+
+  <section class="form-pane" aria-label="Application form">
+    <div id="sections"></div>
+
+    <div class="certify card" id="certify-card">
+      <h3>Applicant's certification</h3>
+      <p>
+        This is deliberately not available as an agent tool. Only the person filing can attest to their own
+        application, so an agent cannot tick this box for you no matter how it is asked.
+      </p>
+      <label class="check">
+        <input type="checkbox" id="certify">
+        <span>I have reviewed every answer above and confirm it is complete and correct to the best of my knowledge.</span>
+      </label>
+    </div>
+  </section>
+
+  <aside class="agent-pane" aria-label="Agent activity">
+
+    <div class="pane-block">
+      <div class="pane-head">
+        <h2>Agent tool surface</h2>
+        <span class="count" id="tool-count">0</span>
+      </div>
+      <p class="pane-hint">
+        These are the tools this page is exposing <em>right now</em>. The set changes as you answer questions, so an
+        agent is only ever offered the next legal move. Select one to read the schema it is currently advertising.
+      </p>
+      <ul class="tool-list" id="tool-list"></ul>
+      <div class="locked-note" id="locked-note"></div>
+    </div>
+
+    <div class="pane-block" id="schema-block" hidden>
+      <div class="pane-head">
+        <h2>Live schema</h2>
+        <button class="btn btn-tiny" id="btn-close-schema">close</button>
+      </div>
+      <p class="pane-hint" id="schema-desc"></p>
+      <pre class="schema" id="schema-view"></pre>
+    </div>
+
+    <div class="pane-block">
+      <div class="pane-head">
+        <h2>Review queue</h2>
+        <span class="count" id="pending-count">0</span>
+      </div>
+      <p class="pane-hint">
+        Nothing an agent proposes is applied until you accept it here. Proposals are still validated the moment they
+        arrive, so the agent gets corrected without waiting on you.
+      </p>
+      <div id="pending-list"></div>
+      <label class="check small">
+        <input type="checkbox" id="auto-accept">
+        <span>Apply agent changes without asking me</span>
+      </label>
+    </div>
+
+    <div class="pane-block">
+      <div class="pane-head">
+        <h2>Tool call log</h2>
+        <button class="btn btn-tiny" id="btn-try">Try a tool</button>
+      </div>
+      <div id="log"></div>
+    </div>
+
+  </aside>
+</main>
+
+<div class="modal-backdrop" id="try-modal" hidden>
+  <div class="modal card">
+    <h3>Invoke a tool as an agent would</h3>
+    <p class="pane-hint">
+      This uses the same <code>getTools()</code> and <code>executeTool()</code> calls an in-page agent uses, so what
+      you see here is exactly what an agent sees.
+    </p>
+    <label>Tool<select id="try-tool"></select></label>
+    <label>Arguments (JSON)<textarea id="try-args" rows="7" spellcheck="false">{}</textarea></label>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btn-try-cancel">Cancel</button>
+      <button class="btn btn-ghost" id="btn-try-abort" hidden>Stop</button>
+      <button class="btn btn-primary" id="btn-try-run">Execute</button>
+    </div>
+    <pre class="schema" id="try-result" hidden></pre>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="packet-modal" hidden>
+  <div class="modal card wide">
+    <h3>Filing packet — review against your documents</h3>
+    <div id="packet-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btn-packet-close">Close</button>
+      <button class="btn btn-primary" id="btn-packet-print">Print</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

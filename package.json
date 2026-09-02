@@ -1,0 +1,12 @@
+{
+  "name": "ombuds",
+  "version": "1.0.0",
+  "description": "A WebMCP-native form assistant. The page teaches, constrains, and corrects the agent.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "npx --yes serve . -l 4173",
+    "test": "node test/run.js"
+  }
+}
