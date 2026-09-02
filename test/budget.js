@@ -22,14 +22,34 @@ store.propose("mailing", { mailingStreet:"1 A St", mailingUnitType:"None", maili
 await new Promise(r=>setTimeout(r,60)); await capture();
 store.propose("eligibility", { eligibilityCategory:"(c)(3)(C)" }, "human");
 await new Promise(r=>setTimeout(r,60)); await capture();
-store.propose("numbers", { hasSSN:false, wantsSSNCard:true }, "human");
+store.propose("numbers", { aNumber:"A012345678", hasSSN:false, wantsSSNCard:true, fathersFullName:"Sok Vuthy", mothersFullName:"Chan Sophea", consentToDisclosure:true }, "human");
 await new Promise(r=>setTimeout(r,60)); await capture();
 store.propose("history", { dateOfLastEntry:"08/20/2023", placeOfLastEntry:"SFO, CA", statusAtLastEntry:"F-1 student", currentImmigrationStatus:"F-1 student" }, "human");
 await new Promise(r=>setTimeout(r,60)); await capture();
-store.propose("category-details", { sevisNumber:"N0012345678", schoolName:"SJSU", stemDegreeCipCode:"11.0701", employerEVerifyNumber:"123456" }, "human");
+store.propose("category-details", { sevisNumber:"N0012345678", schoolName:"SJSU", stemDegreeCipCode:"11.0701", employerEVerifyNumber:"123456", currentEadExpires:"12/31/2026" }, "human");
 await new Promise(r=>setTimeout(r,60)); await capture();
 store.propose("contact", { daytimePhone:"4085551234", email:"a@b.co" }, "human");
 await new Promise(r=>setTimeout(r,60)); await capture();
+// The undo tool needs history and the certification tool needs a wholly
+// finished form, so drive the form to completion and capture again. Without
+// this the audit silently skipped two tools, which is the failure mode a budget
+// test exists to prevent.
+store.propose("identity", { middleName: "Vuthy" }, "human");
+await new Promise(r=>setTimeout(r,80)); await capture();
+
+store.propose("physical", { physicalStreet:"9 B St", physicalUnitType:"None", physicalCity:"Sunnyvale", physicalState:"CA", physicalZip:"94086" }, "human");
+store.proposeRow("otherNames", { familyName:"Chan", givenName:"Dara" }, "human");
+await new Promise(r=>setTimeout(r,80)); await capture();
+
+const done = store.formStatus();
+if (done.sectionsComplete !== done.sectionsAvailable) {
+  console.log(`  !! form did not reach completion (${done.sectionsComplete}/${done.sectionsAvailable}), so gated tools were not audited`);
+  for (const sec of done.sections.filter(x => !x.complete)) {
+    console.log(`     incomplete: ${sec.section} (${sec.errorCount} issues)`);
+  }
+  process.exit(1);
+}
+await capture();
 
 let violations = 0;
 let annotationGaps = 0;

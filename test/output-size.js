@@ -14,7 +14,7 @@ const fill = async () => {
   store.propose("mailing", { mailingStreet:"1420 Wolfe Road", mailingUnitType:"Apt", mailingUnitNumber:"12B", mailingCity:"Sunnyvale", mailingState:"CA", mailingZip:"94086", mailingSameAsPhysical:true }, "human");
   store.propose("numbers", { aNumber:"A012345678", uscisAccountNumber:"123456789012", hasSSN:true, ssn:"123456789" }, "human");
   store.propose("eligibility", { eligibilityCategory:"(c)(3)(C)" }, "human");
-  store.propose("category-details", { sevisNumber:"N0012345678", schoolName:"San Jose State University", stemDegreeCipCode:"11.0701", employerEVerifyNumber:"123456" }, "human");
+  store.propose("category-details", { sevisNumber:"N0012345678", schoolName:"San Jose State University", stemDegreeCipCode:"11.0701", employerEVerifyNumber:"123456", currentEadExpires:"12/31/2026" }, "human");
   store.propose("history", { dateOfLastEntry:"08/20/2023", placeOfLastEntry:"San Francisco, CA", statusAtLastEntry:"F-1 student", currentImmigrationStatus:"F-1 student" }, "human");
   store.propose("contact", { daytimePhone:"4085551234", email:"dara@example.com", preferredLanguage:"Khmer" }, "human");
   store.setCertified(true);
@@ -36,7 +36,9 @@ const probes = [
   ["get-proposed-changes", {}],
   ["run-eligibility-precheck", {}],
   ["generate-filing-packet", {}],
-  ["set-personal-info", { familyName: "Sok" }]
+  ["set-personal-info", { familyName: "Sok" }],
+  ["check-filing-window", {}],
+  ["list-eligibility-categories", { compare: ["(c)(3)(A)", "(c)(3)(B)", "(c)(3)(C)"] }]
 ];
 
 let over = 0;

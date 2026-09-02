@@ -96,7 +96,7 @@ ok("(c)(9) asks only for the I-485 receipt", JSON.stringify(Object.keys(cs.prope
 await call("set-eligibility-category", { eligibilityCategory: "(c)(3)(C)" });
 await acceptAll();
 cs = await schemaOf("answer-category-questions");
-ok("(c)(3)(C) asks four different questions", Object.keys(cs.properties).length === 4, JSON.stringify(Object.keys(cs.properties)));
+ok("(c)(3)(C) asks a different set of questions", Object.keys(cs.properties).length === 5, JSON.stringify(Object.keys(cs.properties)));
 ok("same tool name, different schema", cs.properties.stemDegreeCipCode !== undefined);
 
 console.log("\n== the form refuses out-of-scope fields ==");
@@ -112,7 +112,8 @@ await acceptAll();
 console.log("\n== cross-field conflict detection ==");
 await call("answer-category-questions", {
   sevisNumber: "N0012345678", schoolName: "San Jose State University",
-  stemDegreeCipCode: "11.0701", employerEVerifyNumber: "123456"
+  stemDegreeCipCode: "11.0701", employerEVerifyNumber: "123456",
+  currentEadExpires: "12/31/2026"
 });
 await acceptAll();
 await call("set-immigration-history", {
@@ -165,5 +166,94 @@ console.log("\n== packet gated on human certification ==");
 n = await names();
 ok("packet tool still absent", !n.includes("generate-filing-packet"));
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
+
+// ---------------------------------------------------------------------------
+// Additions: filing window, undo, comparison, and elicitation
+// ---------------------------------------------------------------------------
+
+console.log("\n== category comparison ==");
+r = await call("list-eligibility-categories", { compare: ["(c)(3)(B)", "(c)(3)(C)"] });
+ok("compares two categories", r.structuredContent.compared.length === 2);
+ok("finds what they share", r.structuredContent.sharedRequirements.includes("SEVIS number"));
+const onlyC = r.structuredContent.compared.find(c => c.code === "(c)(3)(C)");
+ok("finds what is unique to one", onlyC.uniqueTo.includes("STEM degree CIP code"),
+  JSON.stringify(onlyC.uniqueTo));
+r = await call("list-eligibility-categories", { compare: ["(c)(3)(B)", "(c)(99)"] });
+ok("refuses an invented code in a comparison", r.structuredContent.invalid?.includes("(c)(99)"));
+
+console.log("\n== filing window ==");
+n = await names();
+ok("window tool registered once a category exists", n.includes("check-filing-window"));
+r = await call("check-filing-window", {});
+ok("window computed from the applicant's own dates", r.structuredContent.applicable === true,
+  JSON.stringify(r.structuredContent).slice(0, 160));
+ok("window names its anchor", String(r.structuredContent.anchorLabel).includes("current OPT card"),
+  JSON.stringify(r.structuredContent.anchorLabel));
+ok("window has a state", ["open", "closing", "closed", "not-yet-open"].includes(r.structuredContent.state));
+
+console.log("\n== undo a committed change ==");
+await call("set-personal-info", { familyName: "Chan" });
+await acceptAll();
+ok("value committed", store.values().familyName === "Chan");
+n = await names();
+ok("undo tool registered", n.includes("undo-last-change"));
+r = await call("undo-last-change", {});
+ok("undo reports what it reverted", r.structuredContent.undone.field === "familyName");
+ok("value actually reverted", store.values().familyName === "Sok", store.values().familyName);
+
+console.log("\n== elicitation: the agent cannot sign for the applicant ==");
+// finish every open section so the certification tool is offered
+await call("set-mailing-address", { mailingStreet: "1420 Wolfe Road", mailingUnitType: "None", mailingCity: "Sunnyvale", mailingState: "CA", mailingZip: "94086", mailingSameAsPhysical: true });
+await acceptAll();
+await call("set-government-numbers", { hasSSN: true, ssn: "123456789" });
+await acceptAll();
+await call("set-contact-details", { daytimePhone: "4085551234", email: "dara@example.com" });
+await acceptAll();
+
+n = await names();
+ok("certification request tool is offered when the form is otherwise done", n.includes("request-certification"), n.join(","));
+ok("packet still absent before signing", !n.includes("generate-filing-packet"));
+
+// the call must genuinely suspend
+const tools0 = await getTools();
+const certTool = tools0.find(t => t.name === "request-certification");
+let settled = false;
+const pending = executeTool(certTool, { note: "Checked every section." }).then(res => { settled = true; return res; });
+await new Promise(r => setTimeout(r, 120));
+ok("the tool call is still suspended", settled === false);
+ok("a question is raised in the page", store.state.elicitation !== null);
+ok("the question carries its labels", store.state.elicitation.confirmLabel === "I confirm and sign");
+ok("still not certified while the human is deciding", store.state.certified === false);
+
+// only a human click resolves it
+store.settleElicitation(true);
+const certRes = await pending;
+ok("resolves once the applicant clicks", certRes.structuredContent.approved === true);
+ok("certification is now set", store.state.certified === true);
+await syncTools();
+n = await names();
+ok("packet appears after the human signs", n.includes("generate-filing-packet"));
+
+console.log("\n== elicitation: decline, and cancellation ==");
+store.setCertified(false);
+await syncTools();
+const tools1 = await getTools();
+const cert1 = tools1.find(t => t.name === "request-certification");
+const p2 = executeTool(cert1, {});
+await new Promise(r => setTimeout(r, 80));
+store.settleElicitation(false);
+const declined = await p2;
+ok("a decline is reported, not treated as approval", declined.structuredContent.approved === false);
+ok("declining leaves the form unsigned", store.state.certified === false);
+
+const ac2 = new AbortController();
+const p3 = executeTool(cert1, {}, { signal: ac2.signal });
+await new Promise(r => setTimeout(r, 80));
+ok("question raised before cancelling", store.state.elicitation !== null);
+ac2.abort();
+let cancelled = false;
+try { await p3; } catch (e) { cancelled = e.name === "AbortError"; }
+ok("cancelling the tool call clears the question", cancelled && store.state.elicitation === null);
+
+console.log(`\nfinal: ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

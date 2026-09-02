@@ -391,6 +391,7 @@ function renderLog() {
     const head = el("div");
     head.append(el("span", "lt", entry.tool));
     if (entry.declarative) head.append(el("span", "decl", "declarative"));
+    if (entry.waiting) head.append(el("span", "decl", "awaiting you"));
     if (entry.crossOrigin) {
       const tag = el("span", "xo", "cross-origin");
       tag.title = `Ran on ${entry.crossOrigin}, not on this page.`;
@@ -503,7 +504,26 @@ function renderPacket() {
 // Wiring
 // ---------------------------------------------------------------------------
 
+function renderElicitation() {
+  const ask = store.state.elicitation;
+  const modal = $("ask-modal");
+  if (!ask) {
+    modal.hidden = true;
+    return;
+  }
+  $("ask-title").textContent = ask.title;
+  $("ask-detail").textContent = ask.detail;
+  $("btn-ask-confirm").textContent = ask.confirmLabel;
+  $("btn-ask-decline").textContent = ask.declineLabel;
+  const wasHidden = modal.hidden;
+  modal.hidden = false;
+  // Move focus into the dialog the first time it opens, so a keyboard user is
+  // not left tabbing behind a modal that is blocking their agent.
+  if (wasHidden) $("btn-ask-confirm").focus();
+}
+
 export function renderAll() {
+  renderElicitation();
   renderRail();
   renderSections();
   renderPending();
@@ -518,6 +538,13 @@ export function initUI() {
 
   initPersistenceControls();
   $("btn-vault-audit").onclick = runVaultAudit;
+
+  // Only these two clicks can settle a suspended tool call.
+  $("btn-ask-confirm").onclick = () => store.settleElicitation(true);
+  $("btn-ask-decline").onclick = () => store.settleElicitation(false);
+  $("ask-modal").addEventListener("keydown", ev => {
+    if (ev.key === "Escape") store.settleElicitation(false);
+  });
 
   $("certify").onchange = e => store.setCertified(e.target.checked);
   $("auto-accept").onchange = e => store.setAutoAccept(e.target.checked);

@@ -194,6 +194,22 @@
   </div>
 </div>
 
+<!--
+  The elicitation dialog. A tool call is suspended behind this: nothing resolves
+  until one of these two buttons is pressed, or the agent cancels.
+-->
+<div class="modal-backdrop" id="ask-modal" hidden>
+  <div class="modal card ask" role="dialog" aria-modal="true" aria-labelledby="ask-title" aria-describedby="ask-detail">
+    <div class="ask-flag">Your agent is waiting on you</div>
+    <h3 id="ask-title"></h3>
+    <p id="ask-detail"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="btn-ask-decline"></button>
+      <button class="btn btn-primary" id="btn-ask-confirm"></button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="packet-modal" hidden>
   <div class="modal card wide">
     <h3>Filing packet — review against your documents</h3>

@@ -115,7 +115,10 @@ export const ELIGIBILITY_CATEGORIES = [
         help: "Your school's international office lists the CIP code on your I-20." },
       { name: "employerEVerifyNumber", label: "Employer E-Verify company ID", type: "string", validate: "everify", required: true,
         description: "Your employer's E-Verify company identification number, 4 to 7 digits.",
-        help: "Ask your employer's HR team. STEM extensions require an E-Verify employer." }
+        help: "Ask your employer's HR team. STEM extensions require an E-Verify employer." },
+      { name: "currentEadExpires", label: "Current card expiry date", type: "date", required: true,
+        description: "Expiry date printed on your current post-completion OPT card, MM/DD/YYYY.",
+        help: "A STEM extension has to be filed while your current card is still valid, so this date sets your filing window." }
     ]
   },
   {

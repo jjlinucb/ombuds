@@ -1,5 +1,6 @@
 import { SECTIONS, SECTION_BY_ID, fieldsFor, descriptionFor } from "./form-definition.js";
-import { ELIGIBILITY_CATEGORIES, getCategory, searchCategories } from "./reference-data.js";
+import { ELIGIBILITY_CATEGORIES, getCategory, searchCategories, CATEGORY_CODES } from "./reference-data.js";
+import { filingWindow } from "./filing-window.js";
 import * as store from "./store.js";
 import { registerTool, onToolChange, init as initAdapter, getMode } from "./webmcp-adapter.js";
 
@@ -168,11 +169,48 @@ function categoriesTool() {
         search: {
           type: "string",
           description: "Optional free text to narrow the list, for example \"student\", \"asylum\", or \"spouse\"."
+        },
+        compare: {
+          type: "array",
+          description: "Optional. Two or more category codes to compare side by side, showing what each one uniquely requires.",
+          items: { type: "string", enum: CATEGORY_CODES },
+          minItems: 2,
+          maxItems: 4
         }
       },
       additionalProperties: false
     },
-    execute({ search } = {}) {
+    execute({ search, compare } = {}) {
+      // Comparing is the question applicants actually have, and it is a
+      // different answer from a list: what does choosing this one cost me that
+      // choosing that one does not.
+      if (Array.isArray(compare) && compare.length >= 2) {
+        const picked = compare.map(getCategory).filter(Boolean);
+        if (picked.length < 2) {
+          return result(
+            `Could not compare. ${compare.filter(c => !getCategory(c)).join(", ")} is not a category code this form accepts.`,
+            { compared: [], invalid: compare.filter(c => !getCategory(c)) }
+          );
+        }
+        const fieldsOf = c => new Set(c.extraFields.map(f => f.label));
+        const shared = [...fieldsOf(picked[0])].filter(l => picked.every(c => fieldsOf(c).has(l)));
+        const lines = picked.map(c => {
+          const unique = [...fieldsOf(c)].filter(l => !shared.includes(l));
+          return `${c.code}  ${c.label}\n    ${c.blurb}\n    Only this one needs: ${unique.length ? unique.join(", ") : "nothing extra"}`;
+        });
+        return result(
+          `Comparing ${picked.length} categories.\nAll of them need: ${shared.length ? shared.join(", ") : "nothing in common"}.\n\n${lines.join("\n\n")}`,
+          {
+            compared: picked.map(c => ({
+              code: c.code, label: c.label,
+              requires: [...fieldsOf(c)],
+              uniqueTo: [...fieldsOf(c)].filter(l => !shared.includes(l))
+            })),
+            sharedRequirements: shared
+          }
+        );
+      }
+
       const matches = searchCategories(search);
 
       // Output stays inside the 1.5K budget. A narrowed search gets the full
@@ -449,6 +487,115 @@ function packetTool() {
   };
 }
 
+function filingWindowTool() {
+  return {
+    name: "check-filing-window",
+    title: "Check the filing window",
+    annotations: { readOnlyHint: true },
+    description:
+      "Work out whether this applicant can file today. Some categories only accept an application inside a window measured from a date on the applicant's own documents, and filing outside it is a rejection they learn about by mail weeks later. Calculated from the chosen category and the dates already entered, so call it before telling anyone they are ready.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    execute() {
+      const w = filingWindow(store.values());
+      if (!w.applicable) {
+        return result(w.reason, w);
+      }
+      const lines = [w.headline, w.note];
+      if (w.state === "closed") {
+        lines.push("Ask the applicant whether their program end date is correct before telling them they have missed it, since a mistyped year produces exactly this result.");
+      }
+      return result(lines.join("\n"), w);
+    }
+  };
+}
+
+function undoTool() {
+  const last = store.state.history[0];
+  return {
+    name: "undo-last-change",
+    title: "Undo the last change",
+    annotations: { readOnlyHint: false },
+    description:
+      `Reverse the most recently accepted answer, whoever entered it. Withdrawing a proposal only works before the applicant accepts it, so use this when a value is already committed and turns out to be wrong. The next undo would revert ${last ? `"${last.field}"` : "nothing"}.`,
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    execute() {
+      const undone = store.undoLastChange();
+      if (!undone) {
+        return result("There is nothing left to undo.", { undone: null });
+      }
+      const shown = v => v === undefined ? "blank" : JSON.stringify(v);
+      return result(
+        `Reverted "${undone.field}" from ${shown(undone.to)} back to ${shown(undone.from)}. That change had been entered by the ${undone.source}.\n${store.formStatus().nextAction}`,
+        { undone, status: store.formStatus() }
+      );
+    }
+  };
+}
+
+// A working answer to WebMCP Issue #165, which is open on how a tool should
+// prompt the user for explicit authorization. `execute` may return a promise, so
+// this one does not resolve until a person clicks. The agent is genuinely
+// suspended, cancellation propagates, and no code path lets the agent produce
+// its own approval.
+function certificationTool() {
+  return {
+    name: "request-certification",
+    title: "Ask the applicant to sign",
+    annotations: { readOnlyHint: false },
+    description:
+      "Ask the applicant to review the completed form and sign the certification. This suspends your tool call and raises the question in the page, then returns whether they signed or declined. You cannot sign on their behalf and there is no argument that would let you; only their click resolves this call.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        note: {
+          type: "string",
+          description: "Optional one-line context shown to the applicant, for example what you checked before asking.",
+          maxLength: 160
+        }
+      },
+      additionalProperties: false
+    },
+    async execute({ note } = {}, options = {}) {
+      const status = store.formStatus();
+      if (status.pendingReviewCount > 0) {
+        return result(
+          `Not yet. ${status.pendingReviewCount} of your proposed changes are still awaiting review, and the applicant should not sign a form with unreviewed values in it.`,
+          { asked: false, reason: "pending-review" }
+        );
+      }
+      if (status.blockingIssues.length) {
+        return result(
+          `Not yet. ${status.blockingIssues.length} issue${status.blockingIssues.length === 1 ? " is" : "s are"} outstanding: ${status.blockingIssues.slice(0, 3).map(b => b.field).join(", ")}. Resolve those first.`,
+          { asked: false, reason: "incomplete", issues: status.blockingIssues }
+        );
+      }
+
+      const decision = await store.requestUserDecision({
+        title: "Sign the certification",
+        detail: note
+          ? String(note).slice(0, 160)
+          : "Your agent has finished filling the form and is asking you to confirm every answer is complete and correct.",
+        confirmLabel: "I confirm and sign",
+        declineLabel: "Not yet",
+        signal: options.signal
+      });
+
+      if (!decision.approved) {
+        return result(
+          "The applicant declined to sign for now. Do not ask again in a loop. Ask what they want to change, fix it, then offer once more.",
+          { asked: true, approved: false }
+        );
+      }
+
+      store.setCertified(true);
+      return result(
+        "The applicant reviewed the form and signed the certification themselves. generate-filing-packet is now registered.",
+        { asked: true, approved: true, decidedAt: decision.decidedAt }
+      );
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Section tools, built from whatever the form is currently asking
 // ---------------------------------------------------------------------------
@@ -532,7 +679,15 @@ function desiredTools() {
   if (Object.keys(store.state.pending).length) tools.push(withdrawTool());
 
   const status = store.formStatus();
+  if (store.state.history.length) tools.push(undoTool());
+  if (store.values().eligibilityCategory) tools.push(filingWindowTool());
   if (status.sectionsComplete >= 3) tools.push(precheckTool());
+  // Offered only once the form is otherwise finished and unsigned, so it cannot
+  // be used to skip past the work.
+  if (!store.state.certified && status.sectionsAvailable > 0 &&
+      status.sectionsComplete === status.sectionsAvailable) {
+    tools.push(certificationTool());
+  }
   if (status.readyToGeneratePacket) tools.push(packetTool());
 
   return tools;

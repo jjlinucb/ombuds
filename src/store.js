@@ -19,8 +19,17 @@ export const state = {
   certified: false,
   autoAccept: false,
   toolLog: [],
-  registeredToolNames: []
+  registeredToolNames: [],
+  // An in-flight request for a human decision. The agent's tool call is
+  // genuinely suspended while this is set.
+  elicitation: null,
+  // Committed changes, newest first, so a mistake that was already accepted can
+  // still be walked back. Withdrawing a proposal only helps before someone
+  // clicks accept; this covers after.
+  history: []
 };
+
+let elicitationId = 0;
 
 export const subscribe = fn => { listeners.add(fn); return () => listeners.delete(fn); };
 export const emit = () => listeners.forEach(fn => fn());
@@ -205,7 +214,7 @@ export function propose(sectionId, patch, source = "agent") {
     }
 
     if (source === "human" || state.autoAccept) {
-      state.committed[name] = value;
+      recordChange(name, value, source);
       delete state.pending[name];
     } else {
       state.pending[name] = { value, at: Date.now() };
@@ -235,10 +244,18 @@ export function proposeRow(collection, row, source = "agent") {
   return { accepted: [{ field: collection, value: row }], rejected: [], flagged: [] };
 }
 
+function recordChange(name, value, source) {
+  const from = state.committed[name];
+  if (from === value) return;
+  state.history.unshift({ field: name, from, to: value, source, at: Date.now() });
+  if (state.history.length > 40) state.history.pop();
+  state.committed[name] = value;
+}
+
 export function acceptPending(name) {
   const p = state.pending[name];
   if (!p) return false;
-  state.committed[name] = p.value;
+  recordChange(name, p.value, "agent");
   delete state.pending[name];
   emit();
   return true;
@@ -253,7 +270,7 @@ export function rejectPending(name) {
 
 export function acceptAllPending() {
   const n = Object.keys(state.pending).length + state.pendingRows.length;
-  for (const [k, p] of Object.entries(state.pending)) state.committed[k] = p.value;
+  for (const [k, p] of Object.entries(state.pending)) recordChange(k, p.value, "agent");
   state.pending = {};
   for (const row of state.pendingRows) state[row.collection].push(row.value);
   state.pendingRows = [];
@@ -287,16 +304,84 @@ export function rejectPendingRow(i) {
 
 export function setHuman(name, value) {
   if (value === undefined || value === null || value === "") {
+    const from = state.committed[name];
+    if (from !== undefined) {
+      state.history.unshift({ field: name, from, to: undefined, source: "human", at: Date.now() });
+      if (state.history.length > 40) state.history.pop();
+    }
     delete state.committed[name];
   } else {
-    state.committed[name] = value;
+    recordChange(name, value, "human");
   }
   delete state.pending[name];
   emit();
 }
 
+// Walk back the most recent committed change. Returns what was undone so the
+// caller can say so plainly rather than reporting a silent success.
+export function undoLastChange() {
+  const last = state.history.shift();
+  if (!last) return null;
+  if (last.to === undefined && last.from !== undefined) {
+    state.committed[last.field] = last.from;
+  } else if (last.from === undefined) {
+    delete state.committed[last.field];
+  } else {
+    state.committed[last.field] = last.from;
+  }
+  emit();
+  return last;
+}
+
 export function setCertified(v) { state.certified = v; emit(); }
 export function setAutoAccept(v) { state.autoAccept = v; emit(); }
+
+// Elicitation.
+//
+// WebMCP Issue #165 is open on how a tool should prompt the user for explicit
+// authorization mid-execution. No API for it is standardized yet, so this is a
+// working answer built from what the spec already provides: `execute` may return
+// a promise, and it receives an AbortSignal.
+//
+// The tool call does not resolve until a person clicks. The agent is left
+// genuinely pending, cancellation propagates, and there is no code path by which
+// the agent produces its own approval. That last property is the point. An
+// agent may ask for a signature; only a human can supply one.
+export function requestUserDecision({ title, detail, confirmLabel, declineLabel, signal }) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Cancelled before the applicant was asked.", "AbortError"));
+      return;
+    }
+
+    const id = ++elicitationId;
+    state.elicitation = {
+      id, title, detail,
+      confirmLabel: confirmLabel || "Approve",
+      declineLabel: declineLabel || "Decline",
+      resolve, reject,
+      at: Date.now()
+    };
+
+    signal?.addEventListener("abort", () => {
+      if (state.elicitation?.id !== id) return;
+      state.elicitation = null;
+      emit();
+      reject(new DOMException("The applicant was still deciding when the request was cancelled.", "AbortError"));
+    }, { once: true });
+
+    emit();
+  });
+}
+
+export function settleElicitation(approved) {
+  const pending = state.elicitation;
+  if (!pending) return false;
+  state.elicitation = null;
+  emit();
+  pending.resolve({ approved, decidedAt: new Date().toISOString() });
+  return true;
+}
 
 export function logToolCall(entry) {
   state.toolLog.unshift({ ...entry, at: Date.now() });
@@ -305,11 +390,18 @@ export function logToolCall(entry) {
 }
 
 export function reset() {
+  // A pending question has to be released, or the agent waits forever on a form
+  // that no longer exists.
+  if (state.elicitation) {
+    state.elicitation.reject(new DOMException("The form was reset while the applicant was deciding.", "AbortError"));
+    state.elicitation = null;
+  }
   state.committed = {};
   state.pending = {};
   state.otherNames = [];
   state.pendingRows = [];
   state.certified = false;
   state.toolLog = [];
+  state.history = [];
   emit();
 }

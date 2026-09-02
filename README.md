@@ -20,7 +20,7 @@ Ombuds is the other approach. The page owns the rules, so the page is the one th
 
 ## What makes this a WebMCP app rather than a form with tools bolted on
 
-Seven things. The first five are impossible or pointless over a backend integration. The sixth uses both halves of the spec, and the seventh sends tools across an origin boundary.
+Eight things. The first five are impossible or pointless over a backend integration. The sixth uses both halves of the spec, the seventh sends tools across an origin boundary, and the eighth is a working answer to a question the standard has not settled yet.
 
 ### 1. The schemas are generated from live state, not written by hand
 
@@ -124,6 +124,41 @@ Cross-origin `exposedTo` needs browser support the origin trial does not univers
 
 See [`src/federation.js`](src/federation.js) and [`vault/vault.js`](vault/vault.js).
 
+### 8. A working answer to an open spec question
+
+[Issue #165](https://github.com/webmachinelearning/webmcp/issues/165) is open on how a tool should prompt the user for explicit authorization mid-execution. No API for it is standardized yet. `request-certification` is a working answer built from what the spec already provides, since `execute` may return a promise and it receives an `AbortSignal`:
+
+```js
+async execute({ note }, options) {
+  const decision = await store.requestUserDecision({
+    title: "Sign the certification",
+    detail: note,
+    signal: options.signal
+  });
+  if (!decision.approved) return declined();
+  store.setCertified(true);
+  return signed();
+}
+```
+
+The tool call does not resolve until a person clicks. The agent is genuinely suspended, the page raises the question with the agent's own note attached, cancellation propagates and clears the dialog, and there is no code path by which the agent produces its own approval. That last property is the point: an agent may **ask** for a signature, only a human can **supply** one.
+
+This replaces the earlier design where the certification simply had no tool. Refusing to expose it made the guarantee but also made the agent useless at the last step, since it could not even ask. Elicitation keeps the guarantee and drops the uselessness.
+
+The tool is registered only while the form is otherwise complete and unsigned, and it refuses outright if the review queue is non-empty, because nobody should be asked to sign a form with unreviewed values in it.
+
+## Filing windows
+
+`check-filing-window` computes whether this applicant can file today. Post-completion OPT opens 90 days before the program end date and closes 60 days after it. A STEM extension must be filed before the current card lapses. Filing outside the window is a rejection the applicant learns about by mail weeks later.
+
+This is the clearest case for putting knowledge in the page. The rule depends on the category and on a date the applicant already entered, so only something running here can compute it. A backend tool would have to ask for both and trust the agent to relay them correctly.
+
+Building it surfaced an inconsistency in my own model: the STEM rule was anchored on `programEndDate`, a field that category never collects, so the window silently reported itself uncomputable. A STEM extension keys off the current card's expiry, so the category now asks for that and the rule points at it. Domain rules that reference fields the form does not gather are a quiet class of bug, and the only way I found it was writing a test that expected a real answer.
+
+## Recovering from a mistake
+
+`withdraw-proposed-change` only helps before someone clicks accept. `undo-last-change` covers after: the store keeps a revision history of every committed change with who made it, and the tool walks the most recent one back and says what it reverted and who had entered it. An agent that gets a value wrong and has it accepted is no longer stuck asking the applicant to retype.
+
 ## Security posture
 
 Chrome publishes a [tool security guide](https://developer.chrome.com/docs/ai/webmcp/secure-tools) for WebMCP authors, and this app follows it rather than discovering it later.
@@ -184,7 +219,7 @@ node serve.js vault 4174
 npm test
 ```
 
-`npm test` runs three suites. `test/run.js` walks the agent's whole path through the adapter's `getTools()` and `executeTool()`, covering 43 assertions: progressive registration, per-category schema generation, self-correction from structured errors, the approval gate, enum enforcement, cross-field conflict detection, sensitive-field refusal, and cancellation.
+`npm test` runs three suites. `test/run.js` walks the agent's whole path through the adapter's `getTools()` and `executeTool()`, covering 68 assertions: progressive registration, per-category schema generation, self-correction from structured errors, the approval gate, enum enforcement, cross-field conflict detection, sensitive-field refusal, cancellation, filing-window arithmetic, undo across a revision history, and the elicitation contract, including that a suspended call stays suspended, that a decline is never read as approval, and that cancelling clears the question.
 
 ## How it is put together
 
@@ -198,6 +233,7 @@ npm test
 | [`src/webmcp-adapter.js`](src/webmcp-adapter.js) | Thin pass-through to `document.modelContext`, with a local registry when WebMCP is absent so tests and the in-page panel use the identical code path |
 | [`src/declarative.js`](src/declarative.js) | The declarative form tool's search and its `respondWith()` response |
 | [`src/persistence.js`](src/persistence.js) | Opt-in local draft storage, and the rules about what never persists |
+| [`src/filing-window.js`](src/filing-window.js) | Per-category filing windows computed from the applicant's own dates |
 | [`src/federation.js`](src/federation.js) | Cross-origin discovery via `fromOrigins`, with the bridge fallback |
 | [`vault/vault.js`](vault/vault.js) | The second origin's tools, registered with `exposedTo` |
 | [`test/budget.js`](test/budget.js) | Fails if any tool exceeds the documented metadata budgets |
