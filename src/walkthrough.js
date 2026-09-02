@@ -89,7 +89,7 @@ export const STEPS = [
   },
   {
     caption: "The agent sends a malformed SEVIS number. The page rejects it with the rule and an example.",
-    holdSeconds: 14,
+    holdSeconds: 16,
     watch: "log",
     async run() {
       await call("answer-category-questions", { sevisNumber: "12345" });
@@ -111,7 +111,7 @@ export const STEPS = [
   },
   {
     caption: "Its answers are proposals, sitting in the review queue until a person accepts them.",
-    holdSeconds: 8,
+    holdSeconds: 10,
     watch: "queue",
     async run() { await pause(900); }
   },
@@ -147,7 +147,7 @@ export const STEPS = [
   },
   {
     caption: "That expired I-20 came from a vault on a different origin, which publishes tools only to this page.",
-    holdSeconds: 16,
+    holdSeconds: 18,
     watch: "vault",
     async run() {
       scrollTo("vault-card");
@@ -168,7 +168,7 @@ export const STEPS = [
   },
   {
     caption: "It can ask. It cannot sign. Only this click resolves that call.",
-    holdSeconds: 20,
+    holdSeconds: 23,
     watch: "ask",
     async run() { await pause(400); },
     waitsForHuman: true
