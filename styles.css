@@ -442,3 +442,52 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 @media (prefers-reduced-motion: reduce) {
   .ask-waiting::before { animation: none; }
 }
+
+/* ---------- guided walkthrough ---------- */
+
+.walkbar {
+  position: sticky; top: 55px; z-index: 30;
+  background: var(--pane); color: var(--pane-ink);
+  border-bottom: 1px solid var(--pane-line);
+}
+.walk-progress { height: 3px; background: #101822; }
+.walk-progress span {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, #4d9bf5, #6fd0a3);
+  transition: width 320ms ease;
+}
+.walk-body {
+  display: flex; align-items: center; gap: 16px;
+  padding: 11px 20px; max-width: 100%;
+}
+.walk-count {
+  flex: 0 0 auto; font: 600 11px var(--mono); color: var(--pane-faint);
+  background: #131b25; border: 1px solid var(--pane-line);
+  padding: 4px 8px; border-radius: 20px; white-space: nowrap;
+}
+.walk-caption {
+  flex: 1 1 auto; margin: 0; font-size: 14px; line-height: 1.45;
+  min-width: 0;
+}
+.walk-actions { flex: 0 0 auto; display: flex; gap: 7px; align-items: center; }
+.walkbar.busy .walk-caption { opacity: 0.55; }
+.walkbar.waiting .walk-caption { color: #f0c987; }
+
+/* Highlight whichever panel the current step is about. */
+.spotlight { position: relative; }
+.spotlight::after {
+  content: ""; position: absolute; inset: -3px; pointer-events: none;
+  border: 2px solid #4d9bf5; border-radius: 9px;
+  box-shadow: 0 0 0 4px rgba(77, 155, 245, 0.16);
+  animation: spotFade 1.6s ease-out;
+}
+@keyframes spotFade { from { opacity: 1; } to { opacity: 0.45; } }
+
+@media (max-width: 1080px) {
+  .walk-body { flex-wrap: wrap; }
+  .walk-caption { flex-basis: 100%; order: 3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spotlight::after { animation: none; }
+  .walk-progress span { transition: none; }
+}

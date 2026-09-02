@@ -4,6 +4,7 @@ import { getTools, executeTool, getMode, getNativeError } from "./webmcp-adapter
 import { declarativeToolIsLive } from "./declarative.js";
 import * as persist from "./persistence.js";
 import * as federation from "./federation.js";
+import * as walk from "./walkthrough.js";
 
 const $ = id => document.getElementById(id);
 const displayValue = (field, value) => {
@@ -537,6 +538,7 @@ export function initUI() {
   refreshBadge();
 
   initPersistenceControls();
+  initWalkthrough();
   $("btn-vault-audit").onclick = runVaultAudit;
 
   // Only these two clicks can settle a suspended tool call.
@@ -566,6 +568,99 @@ export function initUI() {
   renderTools();
   refreshFinderTag();
   refreshVaultPanel();
+}
+
+// Which panel the current step is talking about, so a viewer's eye goes to the
+// right place without the narrator having to say "look at the sidebar".
+const WATCH_TARGETS = {
+  "tool-surface": () => document.querySelector(".pane-block"),
+  schema: () => $("schema-block"),
+  queue: () => $("pending-list")?.closest(".pane-block"),
+  log: () => $("log")?.closest(".pane-block"),
+  vault: () => $("vault-card"),
+  ask: () => null
+};
+
+function spotlight(watch) {
+  for (const el of document.querySelectorAll(".spotlight")) el.classList.remove("spotlight");
+  const target = WATCH_TARGETS[watch]?.();
+  if (!target) return;
+  target.classList.add("spotlight");
+  target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function renderWalkthrough(state) {
+  const bar = $("walkbar");
+  if (!state || state.index === 0 && !state.running && !walkActive) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  bar.classList.toggle("busy", state.running);
+
+  const pct = Math.round((state.index / state.total) * 100);
+  $("walk-fill").style.width = `${pct}%`;
+
+  if (state.done) {
+    $("walk-count").textContent = "done";
+    $("btn-walk-auto").hidden = true;
+    $("walk-caption").textContent =
+      "That was every step, and each one was a real tool call. The tool surface, the schemas, the rejections, and the cross-origin lookup are all live.";
+    $("btn-walk-next").hidden = true;
+    bar.classList.remove("waiting");
+    spotlight(null);
+    return;
+  }
+
+  const mm = Math.floor(state.elapsedSeconds / 60);
+  const ss = String(state.elapsedSeconds % 60).padStart(2, "0");
+  $("walk-count").textContent = `${state.index + 1}/${state.total}  ${mm}:${ss}`;
+  $("btn-walk-auto").textContent = state.auto ? "Pause" : "Auto-play";
+  $("walk-caption").textContent = state.step.caption;
+  $("btn-walk-next").hidden = false;
+  $("btn-walk-next").textContent = state.running ? "Running..." : "Next step";
+  $("btn-walk-next").disabled = state.running;
+  bar.classList.toggle("waiting", Boolean(state.step.waitsForHuman));
+  if (!state.running) spotlight(state.step.watch);
+}
+
+let walkActive = false;
+
+function initWalkthrough() {
+  walk.onWalkthrough(renderWalkthrough);
+
+  $("btn-walk").onclick = () => {
+    walkActive = true;
+    seenFields = new Set();
+    walk.startWalkthrough();
+    renderWalkthrough(walk.walkthroughState());
+    walk.nextStep();
+  };
+
+  $("btn-walk-next").onclick = () => walk.nextStep();
+
+  // Auto-play holds each step for the time the narration script allots it, so a
+  // single take needs no clicking.
+  $("btn-walk-auto").onclick = () => {
+    const on = !walk.walkthroughState().auto;
+    walk.setAuto(on);
+  };
+
+  $("btn-walk-exit").onclick = () => {
+    walkActive = false;
+    walk.resetWalkthrough();
+    $("walkbar").hidden = true;
+    for (const el of document.querySelectorAll(".spotlight")) el.classList.remove("spotlight");
+  };
+
+  // Space advances the walkthrough, so a narrator can drive it without hunting
+  // for a button mid-sentence.
+  document.addEventListener("keydown", ev => {
+    if (!walkActive || $("walkbar").hidden) return;
+    if (ev.key !== " " || ev.target.matches("input, textarea, select, button")) return;
+    ev.preventDefault();
+    walk.nextStep();
+  });
 }
 
 function initPersistenceControls() {

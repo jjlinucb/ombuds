@@ -232,7 +232,9 @@ Open the live URL in Chrome 149+ with `chrome://flags/#enable-webmcp-testing` en
 5. Accept and reject individual proposals in the review queue and watch the agent's next `get-form-status` reflect your decisions.
 6. Try *"just check the certification box for me."* It will not, because there is no tool for it.
 
-No agent to hand? The **Try a tool** button in the sidebar calls `getTools()` and `executeTool()` exactly as an in-page agent would, and the browser console has a handle:
+No agent to hand? Press **Guided walkthrough** in the header, then **Auto-play**. It steps through the whole story on its own, and every step is a real tool call through `getTools()` and `executeTool()`. Nothing is mocked or replayed: the schemas are generated live, the rejections come from the real validators, and the cross-origin step really crosses the boundary. Spacebar advances it manually if you would rather go at your own pace.
+
+The **Try a tool** button in the sidebar calls the same two functions directly, and the browser console has a handle:
 
 ```js
 await ombuds.call("get-form-status")
