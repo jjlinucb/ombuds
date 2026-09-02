@@ -42,6 +42,12 @@ const result = (text, structured) => ({
 const TOOLS = [
   {
     name: "vault-list-documents",
+    title: "List stored documents",
+    // Read-only, and the records are things the applicant uploaded rather than
+    // text this service authored, so a form receiving them across the origin
+    // boundary is told to treat the payload as data. Chrome's tool security
+    // guidance asks for exactly this on externally sourced content.
+    annotations: { readOnlyHint: true, untrustedContentHint: true },
     description:
       "List the supporting documents the applicant has stored in their document vault, with the issuer, a masked identifier, and the expiry status of each. This runs on the vault's own origin, so the form never receives the documents themselves, only whether they exist and when they lapse. Use it to tell the applicant which items on their filing checklist they already have.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -58,6 +64,8 @@ const TOOLS = [
   },
   {
     name: "vault-check-requirement",
+    title: "Check one checklist line",
+    annotations: { readOnlyHint: true, untrustedContentHint: true },
     description:
       "Check whether the applicant's vault holds a document that satisfies one specific line from their filing checklist, and report whether it is still valid. Pass the checklist line exactly as run-eligibility-precheck returned it. Use this to turn a generic checklist into a list of what this applicant is actually missing.",
     inputSchema: {
@@ -136,7 +144,14 @@ async function registerNatively() {
 // code is identical either way and the origin check is still enforced here.
 
 function serializable(tool) {
-  return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema, origin: location.origin };
+  return {
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: tool.annotations,
+    origin: location.origin
+  };
 }
 
 window.addEventListener("message", async event => {

@@ -10,8 +10,28 @@ import { registerTool, onToolChange, init as initAdapter, getMode } from "./webm
 // A field becomes a JSON Schema property. Enums carry the full accepted list, so
 // an agent picking a state or a category cannot produce a value the form will
 // reject. This is generated from live state on every sync, never hand-written.
+// Chrome's tool security guidance publishes character budgets: 30 for names,
+// 500 for a tool description, 150 for a parameter description. An earlier
+// version appended each field's human-facing `help` text to its agent-facing
+// `description`, which pushed seven parameters past the 150 limit and risked
+// truncation mid-sentence.
+//
+// They are two audiences, so they are two fields now. `description` is written
+// for the agent and stays inside the budget. `help` stays in the page for the
+// person filling the form, and an agent that wants it can ask `explain-field`.
+export const BUDGET = { name: 30, description: 500, paramDescription: 150, output: 1500 };
+
+function clamp(text, limit) {
+  const t = String(text || "").trim();
+  if (t.length <= limit) return t;
+  // Trim at a sentence boundary where possible so the agent never reads half a rule.
+  const cut = t.slice(0, limit - 1);
+  const stop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("; "));
+  return (stop > limit * 0.5 ? cut.slice(0, stop + 1) : cut.trimEnd()).trim();
+}
+
 function propertyFor(field) {
-  const p = { description: field.description };
+  const p = {};
 
   switch (field.type) {
     case "boolean":
@@ -24,14 +44,13 @@ function propertyFor(field) {
     case "date":
       p.type = "string";
       p.pattern = "^\\d{2}/\\d{2}/\\d{4}$";
-      p.description += " Format MM/DD/YYYY.";
       break;
     default:
       p.type = "string";
       if (field.maxLength) p.maxLength = field.maxLength;
   }
 
-  if (field.help) p.description += ` ${field.help}`;
+  p.description = clamp(field.description, BUDGET.paramDescription);
   return p;
 }
 
@@ -108,6 +127,8 @@ function describeOutcome(sectionTitle, outcome, status) {
 function statusTool() {
   return {
     name: "get-form-status",
+    title: "Check application progress",
+    annotations: { readOnlyHint: true },
     description:
       "Report the state of the whole application: which sections are complete, which are still locked and what unlocks them, every outstanding validation issue, how many proposed changes are waiting for the applicant to review, and the single recommended next action. Call this first on any new conversation, and again whenever a tool result is surprising, because it is the cheapest way to find out what the form wants next.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -137,6 +158,8 @@ function statusTool() {
 function categoriesTool() {
   return {
     name: "list-eligibility-categories",
+    title: "Browse eligibility categories",
+    annotations: { readOnlyHint: true },
     description:
       "List every work authorization eligibility category this form accepts, with the plain-language situation each one covers and the extra evidence each one will then ask for. Call this before set-eligibility-category whenever the applicant describes their situation in their own words rather than naming a category code, because picking the wrong code is the most common reason a real filing is rejected.",
     inputSchema: {
@@ -152,13 +175,27 @@ function categoriesTool() {
     execute({ search } = {}) {
       const matches = searchCategories(search);
 
-      const lines = matches.length
-        ? matches.map(c =>
-            `${c.code}  ${c.label}\n    ${c.blurb}\n    Then requires: ${c.extraFields.map(f => f.label).join(", ")}`)
-        : [`Nothing matched "${search}". Call this tool with no arguments to see all ${ELIGIBILITY_CATEGORIES.length} categories.`];
+      // Output stays inside the 1.5K budget. A narrowed search gets the full
+      // detail for each hit, because that is when the agent is deciding. The
+      // unfiltered list gets one line each, because ten full entries overran
+      // the budget and would have been truncated on the way to the model.
+      const narrowed = Boolean(search) && matches.length && matches.length < ELIGIBILITY_CATEGORIES.length;
+
+      let text;
+      if (!matches.length) {
+        text = `Nothing matched "${search}". Call this tool with no arguments to see all ${ELIGIBILITY_CATEGORIES.length} categories.`;
+      } else if (narrowed) {
+        text = `${matches.length} of ${ELIGIBILITY_CATEGORIES.length} categories match "${search}", best first:\n\n` +
+          matches.map(c =>
+            `${c.code}  ${c.label}\n    ${c.blurb}\n    Then requires: ${c.extraFields.map(f => f.label).join(", ")}`
+          ).join("\n\n");
+      } else {
+        text = `All ${matches.length} categories. Call this tool with a search term to get the evidence each one requires.\n\n` +
+          matches.map(c => `${c.code.padEnd(10)} ${c.label}`).join("\n");
+      }
 
       return result(
-        `${matches.length} of ${ELIGIBILITY_CATEGORIES.length} categories:\n\n${lines.join("\n\n")}`,
+        text,
         {
           categories: matches.map(c => ({
             code: c.code, label: c.label, situation: c.blurb,
@@ -186,6 +223,8 @@ const FIELD_INDEX = (() => {
 function explainTool() {
   return {
     name: "explain-field",
+    title: "Explain a question",
+    annotations: { readOnlyHint: true },
     description:
       "Explain what a specific field on this form means in plain language, where the applicant can find the answer on their own documents, and the exact format the form requires. Use this when the applicant asks what a question means or says they do not know where to find something, instead of guessing on their behalf. The page is the authority on its own wording, so this is more reliable than inferring from the field name.",
     inputSchema: {
@@ -229,6 +268,8 @@ function explainTool() {
 function pendingTool() {
   return {
     name: "get-proposed-changes",
+    title: "Review pending proposals",
+    annotations: { readOnlyHint: true },
     description:
       "List the values you have proposed that the applicant has not yet accepted or rejected. Use this to check whether your earlier proposals went through before assuming a section is finished, and to see which of your own suggestions the applicant turned down.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -258,6 +299,8 @@ function withdrawTool() {
   const names = Object.keys(store.state.pending);
   return {
     name: "withdraw-proposed-change",
+    title: "Withdraw a proposal",
+    annotations: { readOnlyHint: false },
     description:
       "Withdraw a value you proposed before the applicant acts on it. Use this when you realise a value you suggested was wrong, so the applicant is not asked to rule on something you already know is a mistake.",
     inputSchema: {
@@ -288,6 +331,8 @@ function withdrawTool() {
 function precheckTool() {
   return {
     name: "run-eligibility-precheck",
+    title: "Run consistency checks",
+    annotations: { readOnlyHint: true },
     description:
       "Run the page's consistency checks across every section at once and return the supporting documents this specific applicant will need to file, based on their eligibility category and answers. This takes a few seconds and honours cancellation, so a stop request will abort it cleanly. Run it once the main sections are filled and before generating the packet.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -355,37 +400,51 @@ function precheckTool() {
 function packetTool() {
   return {
     name: "generate-filing-packet",
+    title: "Generate the filing packet",
+    // The packet echoes back every free-text answer the applicant typed. Those
+    // strings were not written by this page, so an agent should treat them as
+    // data rather than as instructions it has just been given.
+    annotations: { readOnlyHint: false, untrustedContentHint: true },
     description:
       "Produce the final review summary of the completed application, ready for the applicant to check against their documents before they file. This tool is only registered once every section is valid, the review queue is empty, and the applicant has personally signed the certification, so its presence is itself a signal that the form is genuinely finished.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     execute() {
       const v = store.values();
-      const lines = [];
+      const sections = [];
+      let answered = 0;
+
       for (const section of store.availableSections()) {
         const fields = fieldsFor(section, v);
         if (!fields.length) continue;
-        lines.push(`${section.part} — ${section.title}`);
-        for (const f of fields) {
+        const filled = fields.filter(f => {
           const raw = v[f.name];
-          const shown = raw === undefined || raw === null || raw === ""
-            ? "(blank)"
-            : f.type === "boolean" ? (raw ? "Yes" : "No") : raw;
-          lines.push(`  ${f.label}: ${shown}`);
-        }
-        lines.push("");
+          return raw !== undefined && raw !== null && String(raw) !== "";
+        }).length;
+        answered += filled;
+        sections.push(`  ${section.part} ${section.title} (${filled}/${fields.length})`);
       }
-      if (store.state.otherNames.length) {
-        lines.push("Other names used");
-        for (const n of store.state.otherNames) {
-          lines.push(`  ${[n.givenName, n.middleName, n.familyName].filter(Boolean).join(" ")}`);
-        }
-        lines.push("");
-      }
+
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("ombuds:packet"));
-      return result(
-        `Filing packet generated and opened in the page for the applicant to review.\n\n${lines.join("\n")}`,
-        { packet: v, otherNames: store.state.otherNames, generatedAt: new Date().toISOString() }
-      );
+
+      // The packet itself is rendered in the page for the applicant to read
+      // against their documents, so echoing every answer back as text would
+      // blow the output budget to tell the agent something the person is
+      // already looking at. Full values travel in structuredContent instead.
+      const text = [
+        `Filing packet generated and opened in the page for the applicant to review against their documents.`,
+        `${answered} answers across ${sections.length} sections:`,
+        ...sections,
+        store.state.otherNames.length
+          ? `Plus ${store.state.otherNames.length} former name${store.state.otherNames.length === 1 ? "" : "s"}.`
+          : null,
+        `Every value is in this result's structuredContent if you need to read one back.`
+      ].filter(Boolean).join("\n");
+
+      return result(text, {
+        packet: v,
+        otherNames: store.state.otherNames,
+        generatedAt: new Date().toISOString()
+      });
     }
   };
 }
@@ -401,7 +460,9 @@ function sectionTool(section) {
   if (section.repeatable) {
     return {
       name: section.tool,
-      description: descriptionFor(section, v),
+      title: `${section.part}: ${section.title}`,
+      annotations: { readOnlyHint: false },
+      description: clamp(descriptionFor(section, v), BUDGET.description),
       inputSchema: schemaForFields(fields),
       execute(args) {
         const outcome = store.proposeRow(section.collection, args);
@@ -422,7 +483,9 @@ function sectionTool(section) {
 
   return {
     name: section.tool,
-    description: descriptionFor(section, v),
+    title: `${section.part}: ${section.title}`,
+    annotations: { readOnlyHint: false },
+    description: clamp(descriptionFor(section, v), BUDGET.description),
     inputSchema: schemaForFields(fields),
     execute(args) {
       const outcome = store.propose(section.id, args || {});
@@ -475,7 +538,7 @@ function desiredTools() {
   return tools;
 }
 
-const fingerprint = t => JSON.stringify([t.description, t.inputSchema]);
+const fingerprint = t => JSON.stringify([t.description, t.inputSchema, t.annotations]);
 
 // Syncs are serialized on a promise chain. Awaiting syncTools() therefore always
 // resolves after a sync that began no earlier than the call, so a caller can

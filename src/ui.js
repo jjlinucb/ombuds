@@ -314,7 +314,16 @@ async function renderTools() {
 function showSchema(tool) {
   $("schema-block").hidden = false;
   $("schema-desc").textContent = tool.description;
-  $("schema-view").textContent = JSON.stringify(tool.inputSchema, null, 2);
+  // Annotations sit alongside the schema, since readOnlyHint and
+  // untrustedContentHint are the part an agent uses to decide how much to
+  // trust a result and whether to confirm before acting on it.
+  const shown = {
+    title: tool.title,
+    annotations: tool.annotations || {},
+    inputSchema: tool.inputSchema
+  };
+  if (tool.origin && tool.origin !== location.origin) shown.origin = tool.origin;
+  $("schema-view").textContent = JSON.stringify(shown, null, 2);
 }
 
 function renderPending() {

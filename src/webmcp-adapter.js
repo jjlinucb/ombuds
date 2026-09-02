@@ -62,8 +62,10 @@ export async function getTools(options) {
   }
   return [...local.tools.values()].map(t => ({
     name: t.name,
+    title: t.title,
     description: t.description,
     inputSchema: t.inputSchema,
+    annotations: t.annotations,
     origin: typeof location !== "undefined" ? location.origin : "shim://local"
   }));
 }

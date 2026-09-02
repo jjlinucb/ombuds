@@ -6,7 +6,8 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "start": "npx --yes serve . -l 4173",
-    "test": "node test/run.js"
+    "start": "node serve.js",
+    "test": "node test/run.js && node test/budget.js && node test/output-size.js",
+    "start:vault": "node serve.js vault 4174"
   }
 }
