@@ -37,6 +37,48 @@
 <main class="layout">
 
   <section class="form-pane" aria-label="Application form">
+
+    <!--
+      A declarative WebMCP tool. The `toolname`, `tooldescription` and
+      `toolparamdescription` attributes let the browser synthesize a tool from
+      this form with no JavaScript registration at all, and the submit handler
+      pipes the answer back through SubmitEvent#respondWith() so the agent gets
+      a result without the page navigating.
+
+      Declarative is the right shape here because this is a flat search over a
+      fixed list. The conditional sections below stay imperative, because
+      branching logic is exactly what a form cannot express. Using each where it
+      fits is the argument the WebMCP explainer itself makes.
+    -->
+    <section class="card finder">
+      <div class="section-head">
+        <span class="section-part">Helper</span>
+        <h3>Find your eligibility category</h3>
+        <span class="section-tool" id="finder-tool-tag" title="Synthesized by the browser from the form markup, with no registerTool call">declarative tool</span>
+      </div>
+      <p class="section-note">
+        Picking the wrong category code is the most common reason a real filing comes back. Describe your
+        situation in your own words and this will narrow the list. An agent can call this the same way you use it.
+      </p>
+      <form id="category-finder"
+            toolname="find-eligibility-category"
+            tooldescription="Search the work authorization eligibility categories using a plain-language description of the applicant's situation, and return the codes that match along with the extra evidence each one requires. Call this before set-eligibility-category whenever the applicant describes their circumstances in their own words rather than naming a category code."
+            toolautosubmit>
+        <div class="finder-row">
+          <input type="text"
+                 id="finder-input"
+                 name="situation"
+                 required
+                 autocomplete="off"
+                 placeholder="F-1 student on STEM OPT"
+                 toolparamdescription="A plain-language description of the applicant's situation, for example 'F-1 student on post-completion OPT', 'spouse of an H-1B worker', or 'pending green card application'."
+                 aria-label="Describe your situation">
+          <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+      </form>
+      <div id="finder-results" class="finder-results" role="status" aria-live="polite"></div>
+    </section>
+
     <div id="sections"></div>
 
     <div class="certify card" id="certify-card">

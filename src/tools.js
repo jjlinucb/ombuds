@@ -1,5 +1,5 @@
 import { SECTIONS, SECTION_BY_ID, fieldsFor, descriptionFor } from "./form-definition.js";
-import { ELIGIBILITY_CATEGORIES, getCategory } from "./reference-data.js";
+import { ELIGIBILITY_CATEGORIES, getCategory, searchCategories } from "./reference-data.js";
 import * as store from "./store.js";
 import { registerTool, onToolChange, init as initAdapter, getMode } from "./webmcp-adapter.js";
 
@@ -150,9 +150,7 @@ function categoriesTool() {
       additionalProperties: false
     },
     execute({ search } = {}) {
-      const q = (search || "").trim().toLowerCase();
-      const matches = ELIGIBILITY_CATEGORIES.filter(c =>
-        !q || `${c.code} ${c.label} ${c.blurb}`.toLowerCase().includes(q));
+      const matches = searchCategories(search);
 
       const lines = matches.length
         ? matches.map(c =>

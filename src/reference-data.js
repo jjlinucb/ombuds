@@ -166,3 +166,47 @@ export const ELIGIBILITY_CATEGORIES = [
 
 export const CATEGORY_CODES = ELIGIBILITY_CATEGORIES.map(c => c.code);
 export const getCategory = code => ELIGIBILITY_CATEGORIES.find(c => c.code === code);
+
+// Shared by the imperative `list-eligibility-categories` tool and by the
+// declarative category-finder form, so a human searching the list and an agent
+// searching it get identical results.
+const SYNONYMS = {
+  student: ["f-1", "opt", "sevis", "i-20", "school"],
+  spouse: ["h-4", "husband", "wife", "married", "dependent"],
+  asylum: ["asylee", "persecution", "refugee"],
+  "green card": ["adjustment", "i-485", "permanent resident"],
+  stem: ["24-month", "extension", "engineering", "science"],
+  daca: ["childhood", "dreamer", "deferred action"]
+};
+
+export function searchCategories(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return ELIGIBILITY_CATEGORIES.slice();
+
+  // Terms shorter than three characters match inside too many words to carry
+  // signal, so "on" and "an" are dropped rather than scored.
+  const terms = new Set(q.split(/[^a-z0-9-]+/).filter(t => t.length >= 3));
+  for (const [key, alts] of Object.entries(SYNONYMS)) {
+    if (q.includes(key)) alts.forEach(a => terms.add(a));
+    if (alts.some(a => q.includes(a))) terms.add(key);
+  }
+
+  const scored = ELIGIBILITY_CATEGORIES.map(c => {
+    const hay = `${c.code} ${c.label} ${c.blurb} ${c.extraFields.map(f => f.label).join(" ")}`.toLowerCase();
+    let score = 0;
+    if (hay.includes(q)) score += 10;
+    for (const t of terms) if (hay.includes(t)) score += 1;
+    return { c, score };
+  }).filter(x => x.score > 0);
+
+  if (!scored.length) return [];
+  scored.sort((a, b) => b.score - a.score);
+
+  // Incidental hits would otherwise drag in most of the list, which is worse
+  // than useless to an agent trying to commit to one code. When the best match
+  // is weak, keep everything that matched at all rather than returning nothing.
+  const top = scored[0].score;
+  const cutoff = top >= 4 ? top * 0.5 : 1;
+  return scored.filter(x => x.score >= cutoff).slice(0, 5).map(x => x.c);
+}
+

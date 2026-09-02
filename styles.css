@@ -290,3 +290,46 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   .modal-backdrop { position: static; background: none; padding: 0; }
   .modal { box-shadow: none; border: 0; max-height: none; }
 }
+
+/* ---------- declarative category finder ---------- */
+
+.finder { border-color: #c9d8ec; background: linear-gradient(180deg, #fbfdff, #fff); }
+.finder .section-tool { background: var(--accent-soft); color: var(--accent); border-color: #b7cfec; }
+.finder .section-tool.off { text-decoration: line-through; opacity: 0.55; }
+
+.finder-row { display: flex; gap: 8px; }
+.finder-row input {
+  flex: 1 1 auto; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+}
+.finder-row input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.finder-row button { flex: 0 0 auto; }
+
+.finder-results { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.finder-results:empty { margin-top: 0; }
+
+.finder-hit {
+  display: flex; align-items: flex-start; gap: 11px; text-align: left;
+  font: inherit; cursor: pointer; width: 100%;
+  padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; background: #fff;
+}
+.finder-hit:hover { border-color: var(--accent); background: var(--accent-soft); }
+.finder-hit .fh-code {
+  flex: 0 0 auto; font: 600 12px/1.5 var(--mono); color: var(--accent);
+  background: var(--accent-soft); border-radius: 4px; padding: 2px 6px;
+}
+.finder-hit .fh-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.finder-hit .fh-body strong { font-size: 13.5px; }
+.finder-hit .fh-body span { font-size: 12px; color: var(--ink-soft); }
+.finder-hit .fh-use {
+  flex: 0 0 auto; align-self: center; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint);
+}
+.finder-hit:hover .fh-use { color: var(--accent); }
+.finder-empty { font-size: 12.5px; color: var(--ink-soft); margin: 0; }
+
+.log-item .decl {
+  font: 600 9.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.05em;
+  color: #9fc3ea; border: 1px solid #35506e; border-radius: 3px;
+  padding: 2px 4px; margin-left: 6px;
+}

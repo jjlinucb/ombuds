@@ -1,6 +1,7 @@
 import { SECTIONS, SECTION_BY_ID, fieldsFor, allFieldsFor, descriptionFor } from "./form-definition.js";
 import * as store from "./store.js";
 import { getTools, executeTool, getMode, getNativeError } from "./webmcp-adapter.js";
+import { declarativeToolIsLive } from "./declarative.js";
 
 const $ = id => document.getElementById(id);
 const displayValue = (field, value) => {
@@ -121,6 +122,7 @@ function renderSection(section) {
   const v = store.values();
 
   const card = el("section", "card section" + (available ? "" : " locked"));
+  card.id = `section-${section.id}`;
 
   const head = el("div", "section-head");
   head.append(el("span", "section-part", section.part));
@@ -312,6 +314,7 @@ function renderLog() {
     const item = el("div", `log-item ${entry.kind}`);
     const head = el("div");
     head.append(el("span", "lt", entry.tool));
+    if (entry.declarative) head.append(el("span", "decl", "declarative"));
     head.append(document.createTextNode(
       entry.kind === "call" ? "  called" :
       entry.kind === "result" ? "  returned" :
@@ -450,6 +453,18 @@ export function initUI() {
   store.subscribe(() => { refreshBadge(); renderAll(); renderTools(); });
   renderAll();
   renderTools();
+  refreshFinderTag();
+}
+
+async function refreshFinderTag() {
+  const tag = document.getElementById("finder-tool-tag");
+  if (!tag) return;
+  const live = await declarativeToolIsLive();
+  tag.classList.toggle("off", !live);
+  tag.textContent = live ? "declarative tool" : "declarative tool";
+  tag.title = live
+    ? "The browser synthesized find-eligibility-category from this form's markup. The page never called registerTool for it."
+    : "This browser did not synthesize a tool from the form markup, so declarative WebMCP is unavailable here. The form still works for you, and the imperative list-eligibility-categories tool covers the same ground for an agent.";
 }
 
 function refreshBadge() {

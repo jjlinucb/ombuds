@@ -1,8 +1,10 @@
 import { initTools, onToolsSynced } from "./tools.js";
 import { getTools, executeTool } from "./webmcp-adapter.js";
 import { initUI, renderAll } from "./ui.js";
+import { initDeclarative } from "./declarative.js";
 
 const mode = await initTools();
+initDeclarative();
 initUI();
 
 // The tool set changing is its own signal, separate from the form's state
