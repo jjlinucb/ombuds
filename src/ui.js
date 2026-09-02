@@ -1,6 +1,6 @@
 import { SECTIONS, SECTION_BY_ID, fieldsFor, allFieldsFor, descriptionFor } from "./form-definition.js";
 import * as store from "./store.js";
-import { getTools, executeTool, getMode } from "./webmcp-adapter.js";
+import { getTools, executeTool, getMode, getNativeError } from "./webmcp-adapter.js";
 
 const $ = id => document.getElementById(id);
 const displayValue = (field, value) => {
@@ -430,16 +430,7 @@ export function renderAll() {
 }
 
 export function initUI() {
-  const mode = getMode();
-  const badge = $("mode-badge");
-  if (mode === "native") {
-    badge.textContent = "WebMCP live";
-    badge.classList.add("live");
-    badge.title = "document.modelContext is available, so a real agent can discover and call these tools.";
-  } else {
-    badge.textContent = "WebMCP not detected";
-    badge.title = "document.modelContext is unavailable, so the page is serving its own tool registry. Enable chrome://flags/#enable-webmcp-testing, or use the Try a tool panel, which exercises the identical code path.";
-  }
+  refreshBadge();
 
   $("certify").onchange = e => store.setCertified(e.target.checked);
   $("auto-accept").onchange = e => store.setAutoAccept(e.target.checked);
@@ -456,9 +447,27 @@ export function initUI() {
   $("btn-packet-print").onclick = () => window.print();
   window.addEventListener("ombuds:packet", renderPacket);
 
-  store.subscribe(() => { renderAll(); renderTools(); });
+  store.subscribe(() => { refreshBadge(); renderAll(); renderTools(); });
   renderAll();
   renderTools();
+}
+
+function refreshBadge() {
+  const mode = getMode();
+  const badge = $("mode-badge");
+  if (mode === "native") {
+    badge.textContent = "WebMCP live";
+    badge.classList.add("live");
+    badge.title = "document.modelContext is available, so a real agent can discover and call these tools.";
+  } else if (mode === "shim-fallback") {
+    badge.classList.remove("live");
+    badge.textContent = "WebMCP refused";
+    badge.title = `The browser exposes document.modelContext but refused to register tools (${getNativeError()?.name || "error"}). This usually means the "tools" permissions policy is disabled. The page has fallen back to its own registry so the interface still works.`;
+  } else {
+    badge.classList.remove("live");
+    badge.textContent = "WebMCP not detected";
+    badge.title = "document.modelContext is unavailable, so the page is serving its own tool registry. Enable chrome://flags/#enable-webmcp-testing, or use the Try a tool panel, which exercises the identical code path.";
+  }
 }
 
 function loadSample() {

@@ -10,20 +10,41 @@ const local = {
   listeners: new Set()
 };
 
+// Set if the browser advertises modelContext but then refuses to use it, for
+// example when the `tools` permissions policy is disabled. In that case the page
+// falls back to its own registry so the interface still works, rather than
+// leaving the user with a form whose tools silently do nothing.
+let nativeDisabled = false;
+let nativeError = null;
+
 export const hasNativeWebMCP = () =>
-  typeof document !== "undefined" && "modelContext" in document && document.modelContext;
+  !nativeDisabled &&
+  typeof document !== "undefined" && "modelContext" in document && Boolean(document.modelContext);
 
 let mode = "unknown";
 export const getMode = () => mode;
+export const getNativeError = () => nativeError;
 
 export function init() {
   mode = hasNativeWebMCP() ? "native" : "shim";
   return mode;
 }
 
+function demoteToShim(err) {
+  nativeDisabled = true;
+  nativeError = err;
+  mode = "shim-fallback";
+  console.warn("[ombuds] WebMCP refused registration, falling back to the page's own registry", err);
+}
+
 export async function registerTool(descriptor, options = {}) {
   if (hasNativeWebMCP()) {
-    return document.modelContext.registerTool(descriptor, options);
+    try {
+      return await document.modelContext.registerTool(descriptor, options);
+    } catch (err) {
+      demoteToShim(err);
+      // fall through and register locally instead
+    }
   }
   local.tools.set(descriptor.name, descriptor);
   if (options.signal) {
