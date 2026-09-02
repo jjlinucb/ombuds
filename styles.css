@@ -368,3 +368,49 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   .tool-list li.entering, .tool-list li.leaving, .field.new-field { animation: none; }
   * { scroll-behavior: auto !important; }
 }
+
+/* ---------- cross-origin vault ---------- */
+
+.vault-card { border-color: #d4cdf0; }
+.vault-card .section-part { background: #efeaff; color: #4c3a8f; }
+.vault-card .section-tool { background: #efeaff; color: #4c3a8f; border-color: #d4cdf0; }
+.vault-card .section-tool.off { text-decoration: line-through; opacity: 0.6; }
+.vault-card code { font: 500 11.5px var(--mono); background: #f4f2fd; padding: 1px 4px; border-radius: 3px; }
+
+.vault-frame-host { margin-top: 4px; }
+.vault-frame {
+  width: 100%; height: 430px; border: 1px solid #d4cdf0;
+  border-radius: 8px; background: #faf9ff; display: block;
+}
+
+.vault-actions { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.vault-hint { font-size: 11.5px; color: var(--ink-faint); }
+
+.vault-audit { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.vault-audit:empty { display: none; }
+.va-row {
+  display: flex; align-items: flex-start; gap: 10px; font-size: 12.5px;
+  border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px; padding: 8px 10px;
+}
+.va-row.held { border-left-color: var(--good); background: #fbfefc; }
+.va-row.expiring { border-left-color: var(--warn); background: #fffdf7; }
+.va-row.expired { border-left-color: var(--bad); background: #fffbfb; }
+.va-row.missing { border-left-color: var(--bad); background: #fffbfb; }
+.va-state {
+  flex: 0 0 auto; font: 600 9.5px var(--mono); text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 6px; border-radius: 3px; margin-top: 1px;
+}
+.va-row.held .va-state { background: var(--good-soft); color: var(--good); }
+.va-row.expiring .va-state { background: var(--warn-soft); color: var(--warn); }
+.va-row.expired .va-state, .va-row.missing .va-state { background: var(--bad-soft); color: var(--bad); }
+.va-body { flex: 1 1 auto; min-width: 0; }
+.va-body strong { display: block; font-weight: 500; }
+.va-body span { color: var(--ink-soft); font-size: 11.5px; }
+
+.tool-list li.cross .tool-btn { border-color: #4a3f7a; background: #171630; }
+.tool-list li.cross .dot { background: #9b86f0; }
+.log-item .xo {
+  font: 600 9.5px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.05em;
+  color: #b9a9f5; border: 1px solid #4a3f7a; border-radius: 3px;
+  padding: 2px 4px; margin-left: 6px;
+}

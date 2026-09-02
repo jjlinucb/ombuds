@@ -5,8 +5,13 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
-const root = new URL(".", import.meta.url).pathname;
-const port = Number(process.env.PORT || 4173);
+// `node serve.js` serves this directory on 4173.
+// `node serve.js vault 4174` serves the vault on a second origin, which is what
+// the cross-origin tool federation needs locally.
+const [dirArg, portArg] = process.argv.slice(2);
+const base = new URL(".", import.meta.url).pathname;
+const root = dirArg ? join(base, dirArg) : base;
+const port = Number(portArg || process.env.PORT || 4173);
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",

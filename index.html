@@ -93,6 +93,25 @@
 
     <div id="sections"></div>
 
+    <section class="card vault-card" id="vault-card">
+      <div class="section-head">
+        <span class="section-part">Cross-origin</span>
+        <h3>Your document vault</h3>
+        <span class="section-tool" id="vault-transport" title="How this page is reaching the vault's tools">connecting</span>
+      </div>
+      <p class="section-note">
+        The vault below is a different service on a different origin, embedded with <code>allow="tools"</code>. It
+        publishes its tools to this page's origin and nothing else, so an agent working on your form can ask whether
+        you already hold a required document without this form ever storing it.
+      </p>
+      <div id="vault-frame-host" class="vault-frame-host"></div>
+      <div class="vault-actions">
+        <button class="btn btn-ghost" id="btn-vault-audit">Check my checklist against the vault</button>
+        <span class="vault-hint" id="vault-hint"></span>
+      </div>
+      <div id="vault-audit" class="vault-audit"></div>
+    </section>
+
     <div class="certify card" id="certify-card">
       <h3>Applicant's certification</h3>
       <p>

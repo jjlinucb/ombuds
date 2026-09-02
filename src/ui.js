@@ -3,6 +3,7 @@ import * as store from "./store.js";
 import { getTools, executeTool, getMode, getNativeError } from "./webmcp-adapter.js";
 import { declarativeToolIsLive } from "./declarative.js";
 import * as persist from "./persistence.js";
+import * as federation from "./federation.js";
 
 const $ = id => document.getElementById(id);
 const displayValue = (field, value) => {
@@ -252,7 +253,14 @@ function renderSections() {
 // ---------------------------------------------------------------------------
 
 async function renderTools() {
-  const tools = await getTools();
+  const own = await getTools();
+  const fed = federation.federationState();
+  // Tools the browser already federated into this document would otherwise be
+  // listed twice, so only bridge-discovered ones are appended here.
+  const ownNames = new Set(own.map(t => t.name));
+  const crossNames = new Set(fed.tools.filter(t => !ownNames.has(t.name)).map(t => t.name));
+  const tools = [...own, ...fed.tools.filter(t => crossNames.has(t.name))];
+
   const list = $("tool-list");
   const names = tools.map(t => t.name);
   $("tool-count").textContent = String(names.length);
@@ -264,6 +272,7 @@ async function renderTools() {
     const li = el("li");
     if (!knownTools.has(tool.name)) li.classList.add("entering");
     if (selectedTool === tool.name) li.classList.add("selected");
+    if (tool.name.startsWith("vault-")) li.classList.add("cross");
 
     const btn = el("button", "tool-btn");
     btn.type = "button";
@@ -373,6 +382,11 @@ function renderLog() {
     const head = el("div");
     head.append(el("span", "lt", entry.tool));
     if (entry.declarative) head.append(el("span", "decl", "declarative"));
+    if (entry.crossOrigin) {
+      const tag = el("span", "xo", "cross-origin");
+      tag.title = `Ran on ${entry.crossOrigin}, not on this page.`;
+      head.append(tag);
+    }
     head.append(document.createTextNode(
       entry.kind === "call" ? "  called" :
       entry.kind === "result" ? "  returned" :
@@ -494,6 +508,7 @@ export function initUI() {
   refreshBadge();
 
   initPersistenceControls();
+  $("btn-vault-audit").onclick = runVaultAudit;
 
   $("certify").onchange = e => store.setCertified(e.target.checked);
   $("auto-accept").onchange = e => store.setAutoAccept(e.target.checked);
@@ -510,10 +525,11 @@ export function initUI() {
   $("btn-packet-print").onclick = () => window.print();
   window.addEventListener("ombuds:packet", renderPacket);
 
-  store.subscribe(() => { refreshBadge(); renderAll(); renderTools(); });
+  store.subscribe(() => { refreshBadge(); refreshVaultPanel(); renderAll(); renderTools(); });
   renderAll();
   renderTools();
   refreshFinderTag();
+  refreshVaultPanel();
 }
 
 function initPersistenceControls() {
@@ -571,6 +587,71 @@ async function refreshFinderTag() {
   tag.title = live
     ? "The browser synthesized find-eligibility-category from this form's markup. The page never called registerTool for it."
     : "This browser did not synthesize a tool from the form markup, so declarative WebMCP is unavailable here. The form still works for you, and the imperative list-eligibility-categories tool covers the same ground for an agent.";
+}
+
+function refreshVaultPanel() {
+  const state = federation.federationState();
+  const tag = $("vault-transport");
+  const hint = $("vault-hint");
+  if (!tag) return;
+
+  const labels = {
+    webmcp: ["exposedTo + fromOrigins", "The browser federated the vault's tools across the origin boundary."],
+    bridge: ["bridged", "This browser did not federate tools across origins, so the vault is answering over a postMessage bridge with the same shape."],
+    none: ["not connected", "The vault has not published any tools to this origin."]
+  };
+  const [label, why] = labels[state.transport] || labels.none;
+  tag.textContent = label;
+  tag.classList.toggle("off", state.transport === "none");
+  tag.title = why;
+  hint.textContent = state.origin
+    ? `${state.tools.length} tool${state.tools.length === 1 ? "" : "s"} from ${state.origin}`
+    : "No vault is configured for this origin.";
+  $("btn-vault-audit").disabled = state.transport === "none";
+}
+
+async function runVaultAudit() {
+  const host = $("vault-audit");
+  host.textContent = "";
+  const btn = $("btn-vault-audit");
+  btn.disabled = true;
+  btn.textContent = "Checking...";
+
+  try {
+    // The checklist comes from this page's own precheck, and each line is then
+    // resolved by a tool running on the vault's origin.
+    const pre = await executeNamed("run-eligibility-precheck");
+    const checklist = pre?.structuredContent?.documentChecklist || [];
+    if (!checklist.length) {
+      host.append(el("div", "empty-note", "Fill in more of the form first so there is a checklist to check."));
+      return;
+    }
+
+    for (const requirement of checklist) {
+      const res = await federation.callVaultTool("vault-check-requirement", { requirement });
+      const sc = res?.structuredContent || {};
+      const state = !sc.held ? "missing" : sc.state === "expired" ? "expired" : sc.state === "expiring" ? "expiring" : "held";
+      const row = el("div", `va-row ${state}`);
+      row.append(el("span", "va-state", state === "held" ? "on file" : state));
+      const body = el("div", "va-body");
+      body.append(el("strong", null, requirement));
+      body.append(el("span", null, res?.content?.[0]?.text || ""));
+      row.append(body);
+      host.append(row);
+    }
+  } catch (err) {
+    host.append(el("div", "empty-note", `The vault could not be reached: ${err.message}`));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Check my checklist against the vault";
+  }
+}
+
+async function executeNamed(name, args = {}) {
+  const tools = await getTools();
+  const tool = tools.find(t => t.name === name);
+  if (!tool) return null;
+  return executeTool(tool, args);
 }
 
 function refreshBadge() {

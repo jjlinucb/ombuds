@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document vault</title>
+<style>
+  :root {
+    --ink: #17202a; --soft: #55606e; --faint: #8b95a3; --line: #dfe3e9;
+    --accent: #4c3a8f; --accent-soft: #efeaff;
+    --good: #16794a; --good-soft: #e4f4ec;
+    --warn: #9a5b00; --warn-soft: #fdf1dd;
+    --bad: #a32424; --bad-soft: #fceaea;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 14px;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink); background: #faf9ff;
+  }
+  .vhead { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .vhead h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  .vmark {
+    width: 22px; height: 22px; display: grid; place-items: center;
+    background: var(--accent); color: #fff; border-radius: 5px; font-size: 12px;
+  }
+  .vorigin { font: 500 10.5px var(--mono); color: var(--faint); margin-left: auto; }
+  .vnote { font-size: 11.5px; color: var(--soft); margin: 0 0 10px; }
+  .vault-status {
+    font: 600 10.5px var(--mono); padding: 4px 8px; border-radius: 4px;
+    background: var(--warn-soft); color: var(--warn); border: 1px solid #eed3a2;
+    display: inline-block; margin-bottom: 12px;
+  }
+  .vault-status.live { background: var(--good-soft); color: var(--good); border-color: #b6ddc8; }
+  #docs { display: flex; flex-direction: column; gap: 6px; }
+  .doc { border: 1px solid var(--line); border-left-width: 3px; border-radius: 6px; padding: 8px 10px; background: #fff; }
+  .doc.valid { border-left-color: var(--good); }
+  .doc.expiring { border-left-color: var(--warn); }
+  .doc.expired { border-left-color: var(--bad); }
+  .doc-head { display: flex; align-items: center; gap: 8px; }
+  .doc-head strong { font-size: 13px; }
+  .doc-badge {
+    font: 600 9.5px var(--mono); text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 2px 5px; border-radius: 3px; margin-left: auto;
+    background: #f1f3f6; color: var(--faint);
+  }
+  .doc.valid .doc-badge { background: var(--good-soft); color: var(--good); }
+  .doc.expiring .doc-badge { background: var(--warn-soft); color: var(--warn); }
+  .doc.expired .doc-badge { background: var(--bad-soft); color: var(--bad); }
+  .doc-sub { font-size: 11.5px; color: var(--soft); margin-top: 1px; }
+  .doc-exp { font-size: 11px; color: var(--faint); margin-top: 2px; }
+  #vault-log { margin-top: 12px; display: flex; flex-direction: column; gap: 3px; }
+  #vault-log:empty { display: none; }
+  .vlog { font: 10.5px/1.4 var(--mono); color: var(--faint); }
+  .vfoot { font-size: 11px; color: var(--faint); margin-top: 12px; border-top: 1px solid var(--line); padding-top: 9px; }
+</style>
+</head>
+<body>
+
+<div class="vhead">
+  <span class="vmark" aria-hidden="true">▤</span>
+  <h1>Document vault</h1>
+  <span class="vorigin" id="vorigin"></span>
+</div>
+
+<p class="vnote">
+  A separate service on its own origin. The form embedding this can ask whether a required document exists and
+  when it lapses. It never receives the documents.
+</p>
+
+<div class="vault-status" id="vault-status">connecting</div>
+
+<div id="docs"></div>
+<div id="vault-log" aria-live="polite"></div>
+
+<p class="vfoot">
+  Tools are registered with <code>exposedTo</code> naming only the embedding form's origin, so no other site can
+  discover them.
+</p>
+
+<script>document.getElementById("vorigin").textContent = location.origin;</script>
+<script type="module" src="vault.js"></script>
+</body>
+</html>

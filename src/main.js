@@ -3,12 +3,14 @@ import { getTools, executeTool } from "./webmcp-adapter.js";
 import { initUI, renderAll, announceRestore } from "./ui.js";
 import { initDeclarative } from "./declarative.js";
 import { initPersistence } from "./persistence.js";
+import { initFederation } from "./federation.js";
 
 const mode = await initTools();
 const restoredAt = initPersistence();
 initDeclarative();
 initUI();
 announceRestore(restoredAt);
+initFederation();
 
 // The tool set changing is its own signal, separate from the form's state
 // changing, so the pane refreshes on both.
