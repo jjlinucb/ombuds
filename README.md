@@ -19,7 +19,7 @@ Ombuds is the other approach. The page owns the rules, so the page is the one th
 
 ## What makes this a WebMCP app rather than a form with tools bolted on
 
-Five things, each of which is impossible or pointless over a backend integration.
+Six things. The first five are impossible or pointless over a backend integration, and the sixth uses both halves of the spec.
 
 ### 1. The schemas are generated from live state, not written by hand
 
@@ -83,6 +83,34 @@ Two deliberate consequences:
 
 There is an "apply agent changes without asking me" toggle for people who want the faster path, defaulted off.
 
+### 6. Both halves of the spec, each where it fits
+
+The conditional sections are imperative, because branching logic is exactly what a `<form>` cannot express. The category finder at the top of the page is declarative:
+
+```html
+<form toolname="find-eligibility-category"
+      tooldescription="Search the eligibility categories using a plain-language description..."
+      toolautosubmit>
+  <input name="situation" toolparamdescription="A plain-language description of the applicant's situation...">
+</form>
+```
+
+A supporting browser synthesizes a tool from that markup with no `registerTool` call at all, and the submit handler returns its answer through `SubmitEvent#respondWith()` so the agent gets a result without the page navigating away and discarding the conversation. The tag next to the finder's heading reports whether the browser actually synthesized the tool, rather than inferring it from a version number, and declarative calls are badged in the call log.
+
+Declarative is right for that panel because it is a flat search over a fixed list. Imperative is right for everything below it. Using each where it fits is the argument the WebMCP explainer itself makes, and one ranked search with synonym expansion backs both, so a human and an agent searching the same words get the same answer.
+
+See [`src/declarative.js`](src/declarative.js) and the `<form>` in [`index.html`](index.html).
+
+## Accessibility
+
+The explainer names improving accessibility through agents as a goal, so the form is operable without a mouse or a screen. Boolean answers are a real radiogroup, named by their question, with one tab stop and arrow-key selection. Field errors are wired to their controls with `aria-describedby` and `aria-invalid` and announced with `role="alert"`, so a rejected value is heard rather than only outlined in red. The tool surface entries are buttons rather than clickable list items, and the tool list, review queue, and call log are polite live regions, so a tool appearing or a proposal arriving is announced instead of silently changing. Locked sections report `aria-disabled` and point at the banner saying what they are waiting on. There is a skip link, visible focus throughout, and a `prefers-reduced-motion` branch that drops the register and unregister animations.
+
+## Saving your progress
+
+Off by default, and that is deliberate. This form collects immigration status, government file numbers, and in some branches a Social Security Number, so persisting it is the applicant's decision rather than a default they inherit. Turning it on stores committed answers in `localStorage` on that one device, and deleting the draft is one click next to the privacy notice describing it.
+
+Three choices worth naming. Pending proposals are never saved, because they are a live artifact of a conversation and restoring a stale review queue would ask the applicant to rule on a suggestion they no longer remember. The certification never restores, because a signature is an attestation about what the signer was looking at, so it gets re-affirmed against whatever the draft actually says. A draft that fails to parse is deleted rather than partially applied, since silently seeding a form with values the applicant never entered is worse than starting over.
+
 ## Try it in 90 seconds
 
 Open the live URL in Chrome 149+ with `chrome://flags/#enable-webmcp-testing` enabled, or in the ChatGPT desktop app's browser. Then ask the agent:
@@ -125,6 +153,8 @@ npm test
 | [`src/store.js`](src/store.js) | The committed/pending two-layer state, section gating, and status reporting |
 | [`src/tools.js`](src/tools.js) | Schema generation and the sync loop that keeps the registered tool set equal to what the form wants |
 | [`src/webmcp-adapter.js`](src/webmcp-adapter.js) | Thin pass-through to `document.modelContext`, with a local registry when WebMCP is absent so tests and the in-page panel use the identical code path |
+| [`src/declarative.js`](src/declarative.js) | The declarative form tool's search and its `respondWith()` response |
+| [`src/persistence.js`](src/persistence.js) | Opt-in local draft storage, and the rules about what never persists |
 | [`src/ui.js`](src/ui.js) | The form, the review queue, and the live tool-surface panel |
 
 ### A bug worth mentioning
@@ -139,8 +169,9 @@ The general lesson is that when tool availability is derived from application st
 
 - The form is modeled on the published structure of the I-765 employment authorization application but is a **simplified subset** with roughly forty fields, not a complete reproduction. Category lists and evidence requirements are representative rather than exhaustive.
 - Ombuds is an independent worksheet. It is **not affiliated with USCIS or any government agency**, it does not file anything, and it produces a review summary rather than a submittable document. Anyone filing for real should check their answers against current official instructions.
-- All state is in-memory and per-tab. Reloading starts over. Nothing is sent anywhere, which is the right default for this data but does mean there is no save.
-- `exposedTo` and cross-origin tool federation are implemented in the adapter surface but not exercised, since the app is a single origin.
+- Saving is opt-in and local to one browser on one device. Nothing syncs, and nothing is sent anywhere.
+- `exposedTo` and cross-origin tool federation are implemented in the adapter surface but not exercised, since the app is a single origin. That is the part of the spec with the highest ceiling and it is the obvious next thing to build.
+- Declarative WebMCP is newer than the imperative API and support varies. The finder works as an ordinary form regardless, and the imperative `list-eligibility-categories` tool covers the same ground for an agent when the browser does not synthesize the declarative one.
 
 ## Why this problem
 
