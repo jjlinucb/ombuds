@@ -124,6 +124,20 @@ Cross-origin `exposedTo` needs browser support the origin trial does not univers
 
 See [`src/federation.js`](src/federation.js) and [`vault/vault.js`](vault/vault.js).
 
+## Security posture
+
+Chrome publishes a [tool security guide](https://developer.chrome.com/docs/ai/webmcp/secure-tools) for WebMCP authors, and this app follows it rather than discovering it later.
+
+**Character budgets.** Tool names stay under 30 characters, descriptions under 500, parameter descriptions under 150, and individual output under 1.5K. Those are not cosmetic. A validation rule truncated on its way to the model is worse than no rule, because the agent acts on half of it. `test/budget.js` and `test/output-size.js` fail the build if any tool drifts over, measured against a fully populated form.
+
+**Two audiences, two fields.** An earlier version appended each field's human-facing `help` text onto its agent-facing `description`, which pushed seven parameters past the limit. They are separate now. `description` is written for the agent. `help` stays in the page, and an agent that wants it calls `explain-field`.
+
+**`readOnlyHint`** is declared on every tool, so an agent can tell a question from an action and knows when confirmation is worth asking for.
+
+**`untrustedContentHint`** is set where the guidance calls for it. The vault's tools return records the applicant uploaded rather than text the vault authored, and they cross an origin boundary, so a form receiving them is told to treat the payload as data and not as instructions. `generate-filing-packet` carries the same hint, because it reflects arbitrary free text the applicant typed.
+
+**`exposedTo` is narrow by construction.** The vault names one origin and refuses everything else, and the same allowlist is enforced on the bridge path. A probe from a disallowed host gets no reply at all.
+
 ## Accessibility
 
 The explainer names improving accessibility through agents as a goal, so the form is operable without a mouse or a screen. Boolean answers are a real radiogroup, named by their question, with one tab stop and arrow-key selection. Field errors are wired to their controls with `aria-describedby` and `aria-invalid` and announced with `role="alert"`, so a rejected value is heard rather than only outlined in red. The tool surface entries are buttons rather than clickable list items, and the tool list, review queue, and call log are polite live regions, so a tool appearing or a proposal arriving is announced instead of silently changing. Locked sections report `aria-disabled` and point at the banner saying what they are waiting on. There is a skip link, visible focus throughout, and a `prefers-reduced-motion` branch that drops the register and unregister animations.
@@ -170,7 +184,7 @@ node serve.js vault 4174
 npm test
 ```
 
-`test/run.js` walks the agent's whole path through the adapter's `getTools()` and `executeTool()`, covering 43 assertions: progressive registration, per-category schema generation, self-correction from structured errors, the approval gate, enum enforcement, cross-field conflict detection, sensitive-field refusal, and cancellation.
+`npm test` runs three suites. `test/run.js` walks the agent's whole path through the adapter's `getTools()` and `executeTool()`, covering 43 assertions: progressive registration, per-category schema generation, self-correction from structured errors, the approval gate, enum enforcement, cross-field conflict detection, sensitive-field refusal, and cancellation.
 
 ## How it is put together
 
@@ -186,6 +200,8 @@ npm test
 | [`src/persistence.js`](src/persistence.js) | Opt-in local draft storage, and the rules about what never persists |
 | [`src/federation.js`](src/federation.js) | Cross-origin discovery via `fromOrigins`, with the bridge fallback |
 | [`vault/vault.js`](vault/vault.js) | The second origin's tools, registered with `exposedTo` |
+| [`test/budget.js`](test/budget.js) | Fails if any tool exceeds the documented metadata budgets |
+| [`test/output-size.js`](test/output-size.js) | Fails if worst-case tool output exceeds 1.5K |
 | [`src/ui.js`](src/ui.js) | The form, the review queue, and the live tool-surface panel |
 
 ### A bug worth mentioning
@@ -195,6 +211,8 @@ The first version gated a section on its prerequisites being fully valid, cross-
 Registration now depends on per-field validity only. Cross-field conflicts are reported loudly and block the final packet, but they never retract a tool. `test/run.js` guards the regression.
 
 The general lesson is that when tool availability is derived from application state, it becomes possible to strand an agent in a state it cannot escape. Reachability is a property worth checking deliberately.
+
+A third, in my own plumbing. `federationState()` rebuilt each vault tool descriptor from a field list and silently dropped `title` and `annotations`, so the vault's `untrustedContentHint` never reached the panel that exists to display it. The bridge was forwarding it correctly the whole time. Projecting a descriptor field by field is a reliable way to lose the field you most need; pass the whole thing through.
 
 A second one, in the vault. Requirement matching walked the document list and returned the first entry satisfying any clause, so the checklist line "Two identical passport-style photographs" matched the Passport, because a loose type-substring test found "passport" inside "passport-style" and the Passport happened to come first in the array. Matching is now ranked by specificity: an exact requirement match beats a substring, which beats a bare type mention. Array order no longer decides correctness. Fuzzy matching that short-circuits on first hit will always eventually pick the wrong thing.
 

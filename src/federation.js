@@ -31,7 +31,19 @@ const waiting = new Map();
 export const federationState = () => ({
   origin: vaultOrigin(),
   transport,
-  tools: discovered.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, origin: t.origin }))
+  // Pass the tool descriptors through whole. An earlier version rebuilt each
+  // one from a field list and silently dropped `title` and `annotations`, so
+  // the vault's untrustedContentHint never reached the surface that is supposed
+  // to display it. Projecting a descriptor is a good way to lose the field you
+  // most need.
+  tools: discovered.map(t => ({
+    name: t.name,
+    title: t.title,
+    description: t.description,
+    inputSchema: t.inputSchema,
+    annotations: t.annotations,
+    origin: t.origin || vaultOrigin()
+  }))
 });
 
 // ---------------------------------------------------------------------------
