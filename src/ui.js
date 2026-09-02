@@ -591,15 +591,30 @@ function spotlight(watch) {
 
 function renderWalkthrough(state) {
   const bar = $("walkbar");
-  if (!state || state.index === 0 && !state.running && !walkActive) {
+  if (!state || (!state.started && !walkActive)) {
     bar.hidden = true;
     return;
   }
   bar.hidden = false;
   bar.classList.toggle("busy", state.running);
 
-  const pct = Math.round((state.index / state.total) * 100);
+  const pct = Math.round(((state.index + 1) / state.total) * 100);
   $("walk-fill").style.width = `${pct}%`;
+
+  // Before the first step there is no step to describe. The reset that starts a
+  // run announces exactly that state, and reading through it threw, which killed
+  // the click handler before it could advance to step one.
+  if (!state.step) {
+    $("walk-count").textContent = `0/${state.total}`;
+    $("walk-caption").textContent = "Ready. Every step below is a real tool call through getTools() and executeTool().";
+    $("btn-walk-next").hidden = false;
+    $("btn-walk-next").disabled = false;
+    $("btn-walk-next").textContent = "Next step";
+    $("btn-walk-auto").hidden = false;
+    $("walk-fill").style.width = "0%";
+    bar.classList.remove("waiting");
+    return;
+  }
 
   if (state.done) {
     $("walk-count").textContent = "done";

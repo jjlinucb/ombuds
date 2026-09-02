@@ -177,20 +177,26 @@ export const STEPS = [
 
 export const TOTAL_SECONDS = STEPS.reduce((n, s) => n + s.holdSeconds, 0);
 
-let index = 0;
+// `current` is the step being displayed, not the next one queued. An earlier
+// version incremented after running, so the caption flipped to the next step's
+// text the instant a step finished and then held there. Every caption described
+// the frame after the one on screen. The pointer advances at the start of a step
+// now, so a caption and the thing it describes are the same moment.
+let current = -1;
 let running = false;
 let autoTimer = null;
 let auto = false;
 const listeners = new Set();
 
 export const walkthroughState = () => ({
-  index,
+  index: current,
   total: STEPS.length,
   running,
   auto,
-  step: STEPS[index] || null,
-  done: index >= STEPS.length,
-  elapsedSeconds: STEPS.slice(0, index).reduce((n, s) => n + s.holdSeconds, 0),
+  step: STEPS[current] || null,
+  started: current >= 0,
+  done: current >= STEPS.length - 1 && !running,
+  elapsedSeconds: current > 0 ? STEPS.slice(0, current).reduce((n, s) => n + s.holdSeconds, 0) : 0,
   totalSeconds: TOTAL_SECONDS
 });
 
@@ -198,8 +204,12 @@ export const onWalkthrough = fn => { listeners.add(fn); return () => listeners.d
 const announce = () => listeners.forEach(fn => fn(walkthroughState()));
 
 export async function nextStep() {
-  if (running || index >= STEPS.length) return;
-  const step = STEPS[index];
+  if (running) return;
+  const next = current + 1;
+  if (next >= STEPS.length) return;
+
+  current = next;
+  const step = STEPS[current];
   running = true;
   announce();
 
@@ -212,22 +222,15 @@ export async function nextStep() {
   const ranFor = Date.now() - startedAt;
 
   running = false;
-  index++;
   announce();
 
-  // Auto-play holds each step for the time the narration script allots it, so a
-  // recording advances on its own and the person talking only has to talk. It
-  // stops at a step that needs a human, because that is the whole point of
+  // Auto-play holds this step for the time the narration script allots it, with
+  // the step's own execution time subtracted so wall-clock matches the script.
+  // It stops at a step that waits on a person, because that is the point of
   // that step.
-  //
-  // The time the step's own tool calls took is subtracted from its hold, so
-  // total wall-clock equals TOTAL_SECONDS. Without this the execution time of
-  // every step accumulated on top of the script, and thirteen steps of drift
-  // pushed a 2:38 script towards the three-minute cap.
-  if (auto && index < STEPS.length) {
-    const prev = STEPS[index - 1];
-    if (prev?.waitsForHuman) { auto = false; announce(); return; }
-    const remaining = Math.max(500, prev.holdSeconds * 1000 - ranFor);
+  if (auto && current < STEPS.length - 1) {
+    if (step.waitsForHuman) { auto = false; announce(); return; }
+    const remaining = Math.max(400, step.holdSeconds * 1000 - ranFor);
     clearTimeout(autoTimer);
     autoTimer = setTimeout(() => nextStep(), remaining);
   }
@@ -237,13 +240,13 @@ export function setAuto(on) {
   auto = on;
   clearTimeout(autoTimer);
   announce();
-  if (auto && !running && index < STEPS.length) nextStep();
+  if (auto && !running && current < STEPS.length - 1) nextStep();
 }
 
 export function resetWalkthrough() {
   clearTimeout(autoTimer);
   auto = false;
-  index = 0;
+  current = -1;
   running = false;
   delete window.__walkthroughSignature;
   announce();
