@@ -5,6 +5,7 @@
 Built for the [OpenAI WebMCP Challenge](https://webmcp.devpost.com). MIT licensed. No build step, no dependencies, no backend.
 
 Live demo: **https://ombuds-mu.vercel.app**
+Document vault (second origin): **https://ombuds-vault.vercel.app**
 Repository: **https://github.com/jjlinucb/ombuds**
 
 ---
@@ -19,7 +20,7 @@ Ombuds is the other approach. The page owns the rules, so the page is the one th
 
 ## What makes this a WebMCP app rather than a form with tools bolted on
 
-Six things. The first five are impossible or pointless over a backend integration, and the sixth uses both halves of the spec.
+Seven things. The first five are impossible or pointless over a backend integration. The sixth uses both halves of the spec, and the seventh sends tools across an origin boundary.
 
 ### 1. The schemas are generated from live state, not written by hand
 
@@ -101,6 +102,28 @@ Declarative is right for that panel because it is a flat search over a fixed lis
 
 See [`src/declarative.js`](src/declarative.js) and the `<form>` in [`index.html`](index.html).
 
+### 7. Tools that cross an origin boundary
+
+The document vault at the bottom of the page is a separate service on its own origin, embedded in an iframe carrying `allow="tools"` so the permissions policy lets it register tools at all. It registers with `exposedTo` naming only this form's origin, and the form discovers them with `getTools({ fromOrigins: [...] })` and runs them through `executeTool`. The browser refuses the call unless both halves agree, which is what makes an origin-crossing tool safe rather than merely possible.
+
+The point of the split is the trust boundary. The form asks whether a required document exists and when it lapses. It never receives the document. A form that stored your passport scan would be a different product with a different risk profile, and only tools that carry an origin can express that difference.
+
+The payoff chains both origins. `run-eligibility-precheck` builds a document checklist on this origin from the applicant's eligibility category, then each line is resolved by a tool running on the vault's origin:
+
+```
+on file    A copy of the photo page of your passport
+expiring   Two identical passport-style photographs
+on file    A copy of your most recent I-94 arrival record
+expired    A copy of your Form I-20 with the OPT recommendation on page 2
+missing    A copy of any previously issued Employment Authorization Document
+on file    A copy of your STEM degree certificate or diploma
+missing    Your employer's completed training plan, Form I-983
+```
+
+Cross-origin `exposedTo` needs browser support the origin trial does not universally have yet, so the same tools are also reachable over a `postMessage` bridge with a deliberately identical shape. The calling code does not branch, and the panel reports which transport is actually live rather than claiming the stronger one. Both paths enforce the same origin allowlist, and a probe from a disallowed host gets no reply at all.
+
+See [`src/federation.js`](src/federation.js) and [`vault/vault.js`](vault/vault.js).
+
 ## Accessibility
 
 The explainer names improving accessibility through agents as a goal, so the form is operable without a mouse or a screen. Boolean answers are a real radiogroup, named by their question, with one tab stop and arrow-key selection. Field errors are wired to their controls with `aria-describedby` and `aria-invalid` and announced with `role="alert"`, so a rejected value is heard rather than only outlined in red. The tool surface entries are buttons rather than clickable list items, and the tool list, review queue, and call log are polite live regions, so a tool appearing or a proposal arriving is announced instead of silently changing. Locked sections report `aria-disabled` and point at the banner saying what they are waiting on. There is a skip link, visible focus throughout, and a `prefers-reduced-motion` branch that drops the register and unregister animations.
@@ -137,6 +160,12 @@ node serve.js
 
 Then open `http://localhost:4173`. There is no build step and no dependency to install. Any static host serves this directory as-is.
 
+The cross-origin vault needs a second origin, which locally means a second port:
+
+```bash
+node serve.js vault 4174
+```
+
 ```bash
 npm test
 ```
@@ -155,6 +184,8 @@ npm test
 | [`src/webmcp-adapter.js`](src/webmcp-adapter.js) | Thin pass-through to `document.modelContext`, with a local registry when WebMCP is absent so tests and the in-page panel use the identical code path |
 | [`src/declarative.js`](src/declarative.js) | The declarative form tool's search and its `respondWith()` response |
 | [`src/persistence.js`](src/persistence.js) | Opt-in local draft storage, and the rules about what never persists |
+| [`src/federation.js`](src/federation.js) | Cross-origin discovery via `fromOrigins`, with the bridge fallback |
+| [`vault/vault.js`](vault/vault.js) | The second origin's tools, registered with `exposedTo` |
 | [`src/ui.js`](src/ui.js) | The form, the review queue, and the live tool-surface panel |
 
 ### A bug worth mentioning
@@ -165,12 +196,14 @@ Registration now depends on per-field validity only. Cross-field conflicts are r
 
 The general lesson is that when tool availability is derived from application state, it becomes possible to strand an agent in a state it cannot escape. Reachability is a property worth checking deliberately.
 
+A second one, in the vault. Requirement matching walked the document list and returned the first entry satisfying any clause, so the checklist line "Two identical passport-style photographs" matched the Passport, because a loose type-substring test found "passport" inside "passport-style" and the Passport happened to come first in the array. Matching is now ranked by specificity: an exact requirement match beats a substring, which beats a bare type mention. Array order no longer decides correctness. Fuzzy matching that short-circuits on first hit will always eventually pick the wrong thing.
+
 ## Honest limitations
 
 - The form is modeled on the published structure of the I-765 employment authorization application but is a **simplified subset** with roughly forty fields, not a complete reproduction. Category lists and evidence requirements are representative rather than exhaustive.
 - Ombuds is an independent worksheet. It is **not affiliated with USCIS or any government agency**, it does not file anything, and it produces a review summary rather than a submittable document. Anyone filing for real should check their answers against current official instructions.
 - Saving is opt-in and local to one browser on one device. Nothing syncs, and nothing is sent anywhere.
-- `exposedTo` and cross-origin tool federation are implemented in the adapter surface but not exercised, since the app is a single origin. That is the part of the spec with the highest ceiling and it is the obvious next thing to build.
+- Cross-origin federation falls back to a `postMessage` bridge when the browser does not support `exposedTo` across origins. The panel says which transport is live, so the claim is never stronger than the reality.
 - Declarative WebMCP is newer than the imperative API and support varies. The finder works as an ordinary form regardless, and the imperative `list-eligibility-categories` tool covers the same ground for an agent when the browser does not synthesize the declarative one.
 
 ## Why this problem
