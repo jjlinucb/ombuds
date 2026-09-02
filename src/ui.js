@@ -2,6 +2,7 @@ import { SECTIONS, SECTION_BY_ID, fieldsFor, allFieldsFor, descriptionFor } from
 import * as store from "./store.js";
 import { getTools, executeTool, getMode, getNativeError } from "./webmcp-adapter.js";
 import { declarativeToolIsLive } from "./declarative.js";
+import * as persist from "./persistence.js";
 
 const $ = id => document.getElementById(id);
 const displayValue = (field, value) => {
@@ -435,6 +436,8 @@ export function renderAll() {
 export function initUI() {
   refreshBadge();
 
+  initPersistenceControls();
+
   $("certify").onchange = e => store.setCertified(e.target.checked);
   $("auto-accept").onchange = e => store.setAutoAccept(e.target.checked);
   $("btn-reset").onclick = () => { seenFields = new Set(); store.reset(); };
@@ -454,6 +457,52 @@ export function initUI() {
   renderAll();
   renderTools();
   refreshFinderTag();
+}
+
+function initPersistenceControls() {
+  const toggle = $("persist-toggle");
+  const clear = $("btn-clear-saved");
+
+  if (!persist.storageAvailable()) {
+    toggle.disabled = true;
+    setPersistState("Saving is unavailable in this browser or window.", true);
+    return;
+  }
+
+  toggle.checked = persist.isEnabled();
+
+  toggle.onchange = () => {
+    if (toggle.checked) {
+      persist.enable();
+      setPersistState("Saved in this browser only.");
+    } else {
+      persist.disable();
+      setPersistState("Saving off. Nothing is stored.");
+    }
+    clear.hidden = !toggle.checked;
+  };
+
+  clear.hidden = !persist.isEnabled();
+  clear.onclick = () => {
+    persist.clearSaved();
+    seenFields = new Set();
+    store.reset();
+    setPersistState("Saved draft deleted.");
+  };
+}
+
+function setPersistState(text, warn = false) {
+  const node = $("persist-state");
+  if (!node) return;
+  node.textContent = text;
+  node.classList.toggle("warn", warn);
+}
+
+export function announceRestore(savedAt) {
+  if (!savedAt) return;
+  const when = new Date(savedAt);
+  const stamp = Number.isNaN(when.getTime()) ? "earlier" : when.toLocaleString();
+  setPersistState(`Draft restored from ${stamp}. Re-check the certification before filing.`);
 }
 
 async function refreshFinderTag() {

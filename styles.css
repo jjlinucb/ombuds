@@ -333,3 +333,16 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
   color: #9fc3ea; border: 1px solid #35506e; border-radius: 3px;
   padding: 2px 4px; margin-left: 6px;
 }
+
+/* ---------- persistence control ---------- */
+
+.notice { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+.notice-text { flex: 1 1 460px; min-width: 0; }
+.notice-actions {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding-top: 1px; flex-wrap: wrap;
+}
+.check.tight { font-size: 12px; color: var(--ink-soft); white-space: nowrap; align-items: center; }
+.check.tight input { margin: 0; }
+.persist-state { font-size: 11.5px; color: var(--ink-faint); }
+.persist-state.warn { color: var(--warn); }

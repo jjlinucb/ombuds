@@ -28,10 +28,20 @@
 </header>
 
 <div class="notice">
-  <strong>Independent worksheet.</strong>
-  Ombuds is not affiliated with, endorsed by, or connected to USCIS or any government agency, and it does not file
-  anything on your behalf. It helps you assemble and check your answers, then hands you a summary to review against
-  your own documents. Everything stays in this browser tab and is never sent to a server.
+  <div class="notice-text">
+    <strong>Independent worksheet.</strong>
+    Ombuds is not affiliated with, endorsed by, or connected to USCIS or any government agency, and it does not file
+    anything on your behalf. It helps you assemble and check your answers, then hands you a summary to review against
+    your own documents. Nothing is ever sent to a server.
+  </div>
+  <div class="notice-actions">
+    <label class="check tight" title="Off by default. This form collects immigration status and government file numbers, so saving it is your decision to make, not a default to inherit.">
+      <input type="checkbox" id="persist-toggle">
+      <span>Save my progress in this browser</span>
+    </label>
+    <button class="btn btn-tiny" id="btn-clear-saved" hidden>Delete saved draft</button>
+    <span class="persist-state" id="persist-state"></span>
+  </div>
 </div>
 
 <main class="layout">
