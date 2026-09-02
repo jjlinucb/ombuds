@@ -63,20 +63,51 @@ function renderField(field, section) {
     if (store.state.everRendered) wrap.classList.add("new-field");
   }
 
-  const label = el("label");
+  const errId = `err-${field.name}`;
+  const helpId = `help-${field.name}`;
+  const st = store.sectionStatus(section.id);
+  const err = st.fieldErrors.find(e => e.field === field.name && e.code !== "REQUIRED");
+  const describedBy = err ? errId : field.help ? helpId : null;
+
+  const label = el(field.type === "boolean" ? "span" : "label", "field-label");
   label.append(document.createTextNode(field.label));
-  if (field.required) label.append(el("span", "req", "*"));
+  if (field.required) {
+    // Purely decorative. An aria-label on a roleless span is not dependably
+    // announced, so requiredness is carried by aria-required / the required
+    // attribute on the control itself.
+    const req = el("span", "req", "*");
+    req.setAttribute("aria-hidden", "true");
+    label.append(req);
+  }
   if (pending) label.append(el("span", "proposed-tag", "proposed"));
-  label.htmlFor = `f-${field.name}`;
+  // A boolean renders as a pair of buttons rather than one labelable control, so
+  // the group is named by its text instead of a `for` pointing at nothing.
+  if (field.type !== "boolean") label.htmlFor = `f-${field.name}`;
+  else label.id = `lbl-${field.name}`;
   wrap.append(label);
 
   if (field.type === "boolean") {
     const row = el("div", "bool-row");
+    row.setAttribute("role", "radiogroup");
+    row.setAttribute("aria-labelledby", `lbl-${field.name}`);
+    if (describedBy) row.setAttribute("aria-describedby", describedBy);
+    if (field.required) row.setAttribute("aria-required", "true");
     for (const [txt, val] of [["Yes", true], ["No", false]]) {
       const b = el("button", null, txt);
       b.type = "button";
-      b.setAttribute("aria-pressed", String(value === val));
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(value === val));
+      // Only the selected option, or the first when nothing is chosen, is a tab
+      // stop. Arrow keys move within the group, which is how a radiogroup is
+      // expected to behave.
+      b.tabIndex = value === val || (value === undefined && val === true) ? 0 : -1;
       b.onclick = () => store.setHuman(field.name, value === val ? undefined : val);
+      b.onkeydown = ev => {
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(ev.key)) {
+          ev.preventDefault();
+          store.setHuman(field.name, !val);
+        }
+      };
       row.append(b);
     }
     wrap.append(row);
@@ -92,6 +123,9 @@ function renderField(field, section) {
       if (opt === value) o.selected = true;
       sel.append(o);
     }
+    if (describedBy) sel.setAttribute("aria-describedby", describedBy);
+    if (field.required) sel.required = true;
+    if (err) sel.setAttribute("aria-invalid", "true");
     sel.onchange = () => store.setHuman(field.name, sel.value || undefined);
     wrap.append(sel);
   } else {
@@ -101,14 +135,23 @@ function renderField(field, section) {
     inp.value = value === undefined ? "" : value;
     if (field.type === "date") inp.placeholder = "MM/DD/YYYY";
     if (field.maxLength) inp.maxLength = field.maxLength;
+    if (describedBy) inp.setAttribute("aria-describedby", describedBy);
+    if (field.required) inp.required = true;
+    if (err) inp.setAttribute("aria-invalid", "true");
     inp.onchange = () => store.setHuman(field.name, inp.value.trim() || undefined);
     wrap.append(inp);
   }
 
-  const st = store.sectionStatus(section.id);
-  const err = st.fieldErrors.find(e => e.field === field.name && e.code !== "REQUIRED");
-  if (err) wrap.append(el("div", "err", err.message));
-  else if (field.help) wrap.append(el("div", "help", field.help));
+  if (err) {
+    const node = el("div", "err", err.message);
+    node.id = errId;
+    node.setAttribute("role", "alert");
+    wrap.append(node);
+  } else if (field.help) {
+    const node = el("div", "help", field.help);
+    node.id = helpId;
+    wrap.append(node);
+  }
 
   return wrap;
 }
@@ -136,10 +179,14 @@ function renderSection(section) {
   card.append(head);
 
   if (!available) {
+    card.setAttribute("aria-disabled", "true");
     const why = section.availableWhen && section.requires.every(id => store.sectionStatus(id).satisfied)
       ? "An earlier answer means this section does not apply to you, so its tool is not registered."
       : `Locked until ${section.requires.map(id => SECTION_BY_ID[id].title).join(" and ")} ${section.requires.length > 1 ? "are" : "is"} valid. Its tool is not registered, so an agent cannot fill it out of order.`;
-    card.append(el("div", "locked-banner", why));
+    const banner = el("div", "locked-banner", why);
+    banner.id = `locked-${section.id}`;
+    card.append(banner);
+    card.setAttribute("aria-describedby", banner.id);
     return card;
   }
 
@@ -217,17 +264,27 @@ async function renderTools() {
     const li = el("li");
     if (!knownTools.has(tool.name)) li.classList.add("entering");
     if (selectedTool === tool.name) li.classList.add("selected");
-    li.append(el("span", "dot"));
-    li.append(el("span", "n", tool.name));
-    li.title = tool.description;
-    li.onclick = () => { selectedTool = tool.name; showSchema(tool); renderTools(); };
+
+    const btn = el("button", "tool-btn");
+    btn.type = "button";
+    btn.setAttribute("aria-pressed", String(selectedTool === tool.name));
+    btn.append(el("span", "dot"));
+    btn.append(el("span", "n", tool.name));
+    btn.title = tool.description;
+    btn.setAttribute("aria-label", `${tool.name}. ${tool.description}`);
+    btn.onclick = () => { selectedTool = tool.name; showSchema(tool); renderTools(); };
+
+    li.append(btn);
     list.append(li);
   }
 
   for (const name of gone) {
     const li = el("li", "leaving");
-    li.append(el("span", "dot"));
-    li.append(el("span", "n", name));
+    li.setAttribute("aria-hidden", "true");
+    const ghost = el("span", "tool-btn");
+    ghost.append(el("span", "dot"));
+    ghost.append(el("span", "n", name));
+    li.append(ghost);
     list.append(li);
     setTimeout(() => li.remove(), 430);
   }

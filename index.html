@@ -9,6 +9,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#sections">Skip to the form</a>
+
 <header class="topbar">
   <div class="brand">
     <span class="mark" aria-hidden="true">◫</span>
@@ -109,13 +111,13 @@
     <div class="pane-block">
       <div class="pane-head">
         <h2>Agent tool surface</h2>
-        <span class="count" id="tool-count">0</span>
+        <span class="count" id="tool-count" aria-label="tools currently registered">0</span>
       </div>
       <p class="pane-hint">
         These are the tools this page is exposing <em>right now</em>. The set changes as you answer questions, so an
         agent is only ever offered the next legal move. Select one to read the schema it is currently advertising.
       </p>
-      <ul class="tool-list" id="tool-list"></ul>
+      <ul class="tool-list" id="tool-list" aria-live="polite" aria-relevant="additions removals"></ul>
       <div class="locked-note" id="locked-note"></div>
     </div>
 
@@ -131,13 +133,13 @@
     <div class="pane-block">
       <div class="pane-head">
         <h2>Review queue</h2>
-        <span class="count" id="pending-count">0</span>
+        <span class="count" id="pending-count" aria-label="changes awaiting your review">0</span>
       </div>
       <p class="pane-hint">
         Nothing an agent proposes is applied until you accept it here. Proposals are still validated the moment they
         arrive, so the agent gets corrected without waiting on you.
       </p>
-      <div id="pending-list"></div>
+      <div id="pending-list" aria-live="polite"></div>
       <label class="check small">
         <input type="checkbox" id="auto-accept">
         <span>Apply agent changes without asking me</span>
@@ -149,7 +151,7 @@
         <h2>Tool call log</h2>
         <button class="btn btn-tiny" id="btn-try">Try a tool</button>
       </div>
-      <div id="log"></div>
+      <div id="log" aria-live="polite" aria-relevant="additions"></div>
     </div>
 
   </aside>
